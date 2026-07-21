@@ -6,15 +6,14 @@
   "permissions": [
     "storage",
     "activeTab",
-    "sidepanel"
+    "sidePanel"
   ],
   "host_permissions": [
     "https://app.slack.com/*",
     "https://web.whatsapp.com/*"
   ],
   "background": {
-    "service_worker": "dist/background/index.js",
-    "type": "module"
+    "service_worker": "dist/background/index.js"
   },
   "content_scripts": [
     {
@@ -22,7 +21,8 @@
         "https://app.slack.com/*",
         "https://web.whatsapp.com/*"
       ],
-      "js": ["dist/content/index.js"]
+      "js": ["dist/content/index.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
