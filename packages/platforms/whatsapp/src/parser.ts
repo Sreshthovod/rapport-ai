@@ -1,4 +1,4 @@
-import { SELECTORS } from './selectors.js';
+import { SELECTORS, WhatsAppSelectors } from './selectors.js';
 import {
   ActiveConversation,
   ChatType,
@@ -14,10 +14,10 @@ import {
 } from './constants.js';
 import {
   extractTextWithEmojis,
+  findElementWithFallback,
+  findAllElementsWithFallback,
   Logger,
   parsePrePlainTextTimestamp,
-  queryAllElements,
-  queryFirstElement,
   sanitizeText,
 } from './utils.js';
 
@@ -26,17 +26,23 @@ export function validateWhatsAppDOM(logger?: Logger): WhatsAppDOMValidationResul
   const log = logger || dummyLogger;
 
   const activeChat = parseActiveConversation(log);
-  const inputEl = queryFirstElement(SELECTORS.inputArea);
-  const containerEl = queryFirstElement(SELECTORS.messageListContainer);
+  const inputEl = findElementWithFallback(WhatsAppSelectors.input);
+  const containerEl = findElementWithFallback(WhatsAppSelectors.messageContainer);
   const messages = getVisibleMessages(20, log);
 
+  const chatFound = activeChat !== null;
+  const inputFound = inputEl !== null;
+  const messageContainerFound = containerEl !== null;
+  const connected = chatFound && inputFound && messageContainerFound;
+
   const result: WhatsAppDOMValidationResult = {
-    chatFound: activeChat !== null,
-    inputFound: inputEl !== null,
-    messageContainerFound: containerEl !== null,
+    chatFound,
+    inputFound,
+    messageContainerFound,
     messagesFound: messages.length > 0,
     title: activeChat?.name || null,
     messageCount: messages.length,
+    connected,
   };
 
   logDOMDiagnostics(result);
@@ -85,21 +91,26 @@ export function getCurrentChat(logger: Logger): WhatsAppChat | null {
 }
 
 export function parseActiveConversation(logger: Logger): ActiveConversation | null {
-  const headerEl = queryFirstElement(SELECTORS.chatHeader);
+  const headerEl = findElementWithFallback(WhatsAppSelectors.chatHeader);
   if (!headerEl) {
     return null;
   }
 
-  const titleEl = queryFirstElement(SELECTORS.chatTitle, headerEl) || queryFirstElement(SELECTORS.chatTitle);
+  const titleEl = findElementWithFallback(WhatsAppSelectors.chatTitle, headerEl) || findElementWithFallback(WhatsAppSelectors.chatTitle);
   const name = titleEl ? sanitizeText(titleEl.textContent || '') : UNKNOWN_CHAT;
 
   if (!name || name === UNKNOWN_CHAT) {
     return null;
   }
 
-  const subtitleEl = headerEl.querySelector('span[title*=","], span[title*="You"]');
-  const chatType: ChatType = subtitleEl ? 'group' : 'direct';
+  // Detect group chat structurally or via group icon / subtitle metadata
+  const hasGroupIcon = headerEl.querySelector('span[data-icon*="group"], [data-testid="default-group"], [data-icon="group"]') !== null;
+  const subtitleEl = headerEl.querySelector('div[role="button"] span[title], div[role="button"] span[dir="auto"]');
+  const subtitleText = subtitleEl ? sanitizeText(subtitleEl.getAttribute('title') || subtitleEl.textContent || '') : '';
+  const isDirectStatus = /^(online|typing\.\.\.|last seen|online now)$/i.test(subtitleText);
+  const isGroup = hasGroupIcon || (subtitleText.length > 0 && !isDirectStatus);
 
+  const chatType: ChatType = isGroup ? 'group' : 'direct';
   const safeId = `${chatType}_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 
   return {
@@ -114,12 +125,19 @@ export function parseMessageRow(
   index: number,
   logger: Logger
 ): WhatsAppMessage | null {
-  const isSystem = queryFirstElement(SELECTORS.systemMessage, rowEl);
+  const isSystem = findElementWithFallback(WhatsAppSelectors.systemMessage, rowEl);
   if (isSystem) {
     return null;
   }
 
-  const textEl = queryFirstElement(SELECTORS.messageText, rowEl);
+  // Clone row element and remove quoted containers to isolate current message text
+  const rowClone = rowEl.cloneNode(true) as HTMLElement;
+  const quotedEls = findAllElementsWithFallback(WhatsAppSelectors.quotedContainer, rowClone);
+  for (const q of quotedEls) {
+    q.remove();
+  }
+
+  const textEl = findElementWithFallback(WhatsAppSelectors.messageText, rowClone);
   if (!textEl) {
     return null;
   }
@@ -132,9 +150,10 @@ export function parseMessageRow(
   const isOutgoing =
     rowEl.classList.contains('message-out') ||
     rowEl.getAttribute('data-testid') === 'msg-out' ||
-    rowEl.querySelector('div[data-id*="true_"]') !== null;
+    rowEl.querySelector('div[data-id*="true_"]') !== null ||
+    rowEl.querySelector('[data-testid*="msg-out"]') !== null;
 
-  const copyableContainer = queryFirstElement(['div[data-pre-plain-text]'], rowEl);
+  const copyableContainer = findElementWithFallback({ primary: ['div[data-pre-plain-text]'], secondary: [], tertiary: [] }, rowEl);
   const prePlainText = copyableContainer?.getAttribute('data-pre-plain-text') || '';
 
   let sender = isOutgoing ? 'Me' : UNKNOWN_SENDER;
@@ -149,7 +168,7 @@ export function parseMessageRow(
       }
     }
   } else {
-    const senderEl = queryFirstElement(SELECTORS.messageSender, rowEl);
+    const senderEl = findElementWithFallback(WhatsAppSelectors.messageSender, rowEl);
     if (senderEl && !isOutgoing) {
       sender = sanitizeText(senderEl.textContent || UNKNOWN_SENDER);
     }
@@ -184,12 +203,12 @@ export function parseMessages(
   limit: number = DEFAULT_MESSAGE_LIMIT,
   logger: Logger
 ): WhatsAppMessage[] {
-  const containerEl = queryFirstElement(SELECTORS.messageListContainer);
+  const containerEl = findElementWithFallback(WhatsAppSelectors.messageContainer);
   if (!containerEl) {
     return [];
   }
 
-  const rowElements = queryAllElements(SELECTORS.messageRow, containerEl);
+  const rowElements = findAllElementsWithFallback(WhatsAppSelectors.messages, containerEl);
   if (rowElements.length === 0) {
     return [];
   }
