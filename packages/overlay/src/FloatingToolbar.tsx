@@ -5,11 +5,15 @@ import { ToolbarButton } from './ToolbarButton.js';
 export interface FloatingToolbarProps {
   visible: boolean;
   onSettingsClick?: () => void;
+  onAIClick?: () => void;
+  pendingCommitmentText?: string;
 }
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   visible,
   onSettingsClick,
+  onAIClick,
+  pendingCommitmentText,
 }) => {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const shortcutHint = isMac ? '⌘K' : 'Ctrl+K';
@@ -48,11 +52,41 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         <span style={{ color: 'var(--rapport-text-primary)' }}>Rapport AI</span>
       </div>
 
-      {/* Action Buttons (Disabled Placeholders) */}
-      <ToolbarButton id="ai" label="AI" icon={<AIIcon />} disabled tooltipText="AI Generation (Disabled in Milestone 2)" />
-      <ToolbarButton id="tone" label="Tone" icon={<ToneIcon />} disabled tooltipText="Tone Calibration (Disabled in Milestone 2)" />
-      <ToolbarButton id="strategy" label="Strategy" icon={<StrategyIcon />} disabled tooltipText="Strategy Engine (Disabled in Milestone 2)" />
-      <ToolbarButton id="memory" label="Memory" icon={<MemoryIcon />} disabled tooltipText="Memory Manager (Disabled in Milestone 2)" />
+      {/* Non-intrusive Pending Commitment Badge */}
+      {pendingCommitmentText && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '2px 8px',
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            borderRadius: '6px',
+            color: '#f59e0b',
+            fontSize: '11px',
+            fontWeight: 500,
+          }}
+        >
+          <span>⚠️</span>
+          <span>{pendingCommitmentText}</span>
+        </div>
+      )}
+
+      {/* Active AI Button */}
+      <ToolbarButton
+        id="ai"
+        label="AI"
+        icon={<AIIcon />}
+        disabled={false}
+        onClick={onAIClick}
+        tooltipText="Generate AI Suggested Reply"
+      />
+
+      {/* Disabled Placeholder Buttons */}
+      <ToolbarButton id="tone" label="Tone" icon={<ToneIcon />} disabled tooltipText="Tone Calibration (Disabled)" />
+      <ToolbarButton id="strategy" label="Strategy" icon={<StrategyIcon />} disabled tooltipText="Strategy Engine (Disabled)" />
+      <ToolbarButton id="memory" label="Memory" icon={<MemoryIcon />} disabled tooltipText="Memory Manager (Disabled)" />
 
       {/* Active Settings Button */}
       <ToolbarButton

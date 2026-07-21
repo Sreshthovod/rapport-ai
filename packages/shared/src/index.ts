@@ -3,3 +3,5 @@ export * from './types/conversation.js';
 export * from './types/commitment.js';
 export * from './types/goal.js';
 export * from './types/settings.js';
+export * from './types/ai.js';
+export * from './context/index.js';

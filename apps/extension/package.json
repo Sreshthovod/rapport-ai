@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rapport/ai-core": "workspace:*",
+    "@rapport/commitment-engine": "workspace:*",
     "@rapport/overlay": "workspace:*",
     "@rapport/platform-whatsapp": "workspace:*",
     "@rapport/shared": "workspace:*",

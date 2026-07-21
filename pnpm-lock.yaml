@@ -63,6 +63,12 @@ importers:
 
   apps/extension:
     dependencies:
+      '@rapport/ai-core':
+        specifier: workspace:*
+        version: link:../../packages/ai-core
+      '@rapport/commitment-engine':
+        specifier: workspace:*
+        version: link:../../packages/commitment-engine
       '@rapport/overlay':
         specifier: workspace:*
         version: link:../../packages/overlay
@@ -101,6 +107,19 @@ importers:
         specifier: workspace:*
         version: link:../shared
     devDependencies:
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  packages/commitment-engine:
+    dependencies:
+      '@rapport/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

@@ -1,5 +1,7 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
+import { FakeAIResponse } from '@rapport/shared';
+import { AIModal } from './components/AIModal.js';
 import { FloatingToolbar } from './FloatingToolbar.js';
 import { createPositioningEngine, PositioningEngine } from './Positioning.js';
 import { createShadowHost, ShadowRootHost } from './ShadowRoot.js';
@@ -15,6 +17,16 @@ export class OverlayManager {
   private isVisible: boolean = true;
   private currentTheme: ThemeMode;
   private targetElement: HTMLElement | null = null;
+  private pendingCommitmentText?: string;
+
+  // AI Modal States
+  private aiModalVisible: boolean = false;
+  private aiModalLoading: boolean = false;
+  private aiModalData: FakeAIResponse | null = null;
+  private aiModalError: string | null = null;
+
+  private onAIClickCallback?: () => void;
+  private onInsertDraftCallback?: (text: string) => void;
 
   constructor(options: OverlayManagerOptions = {}) {
     this.currentTheme = options.theme || detectSystemTheme();
@@ -25,26 +37,62 @@ export class OverlayManager {
   public mount(parentContainer: HTMLElement = document.body): void {
     if (this.shadowHost) return;
 
-    // 1. Create closed ShadowRoot DOM host
     this.shadowHost = createShadowHost(this.currentTheme);
     parentContainer.appendChild(this.shadowHost.hostElement);
 
-    // 2. Create React root inside Shadow DOM container
     this.reactRoot = createRoot(this.shadowHost.containerElement);
 
-    // 3. Register global Cmd+K / Ctrl+K listener
     this.registerShortcutListener();
-
-    // 4. Start positioning engine observer
     this.updatePositioning();
-
-    // 5. Initial render
     this.render();
   }
 
   public setTargetElement(target: HTMLElement | null): void {
     this.targetElement = target;
     this.updatePositioning();
+  }
+
+  public setPendingCommitmentText(text?: string): void {
+    this.pendingCommitmentText = text;
+    this.render();
+  }
+
+  public onAIClick(callback: () => void): void {
+    this.onAIClickCallback = callback;
+  }
+
+  public onInsertDraft(callback: (text: string) => void): void {
+    this.onInsertDraftCallback = callback;
+  }
+
+  public showAILoading(): void {
+    this.aiModalVisible = true;
+    this.aiModalLoading = true;
+    this.aiModalData = null;
+    this.aiModalError = null;
+    this.render();
+  }
+
+  public showAIResponse(data: FakeAIResponse): void {
+    this.aiModalVisible = true;
+    this.aiModalLoading = false;
+    this.aiModalData = data;
+    this.aiModalError = null;
+    this.render();
+  }
+
+  public showAIError(error: string): void {
+    this.aiModalVisible = true;
+    this.aiModalLoading = false;
+    this.aiModalData = null;
+    this.aiModalError = error;
+    this.render();
+  }
+
+  public closeAIModal(): void {
+    this.aiModalVisible = false;
+    this.aiModalLoading = false;
+    this.render();
   }
 
   public setTheme(theme: ThemeMode): void {
@@ -94,6 +142,11 @@ export class OverlayManager {
   }
 
   private handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.aiModalVisible) {
+      this.closeAIModal();
+      return;
+    }
+
     const isCmdOrCtrl = event.metaKey || event.ctrlKey;
     if (isCmdOrCtrl && event.key.toLowerCase() === 'k') {
       event.preventDefault();
@@ -106,12 +159,35 @@ export class OverlayManager {
     if (!this.reactRoot) return;
 
     this.reactRoot.render(
-      React.createElement(FloatingToolbar, {
-        visible: this.isVisible,
-        onSettingsClick: () => {
-          console.log('[RapportOverlay] Settings clicked');
-        },
-      })
+      React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(FloatingToolbar, {
+          visible: this.isVisible,
+          pendingCommitmentText: this.pendingCommitmentText,
+          onAIClick: () => {
+            if (this.onAIClickCallback) {
+              this.onAIClickCallback();
+            }
+          },
+          onSettingsClick: () => {
+            console.log('[RapportOverlay] Settings clicked');
+          },
+        }),
+        React.createElement(AIModal, {
+          visible: this.aiModalVisible,
+          loading: this.aiModalLoading,
+          data: this.aiModalData,
+          error: this.aiModalError,
+          onClose: () => this.closeAIModal(),
+          onInsert: (text: string) => {
+            if (this.onInsertDraftCallback) {
+              this.onInsertDraftCallback(text);
+            }
+            this.closeAIModal();
+          },
+        })
+      )
     );
   }
 
