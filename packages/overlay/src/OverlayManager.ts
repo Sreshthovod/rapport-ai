@@ -243,6 +243,11 @@ export class OverlayManager {
           data: this.aiModalData,
           error: this.aiModalError,
           onClose: () => this.closeAIModal(),
+          onRegenerate: () => {
+            if (this.onAIClickCallback) {
+              this.onAIClickCallback();
+            }
+          },
           onInsert: (text: string) => {
             if (this.onInsertDraftCallback) {
               this.onInsertDraftCallback(text);

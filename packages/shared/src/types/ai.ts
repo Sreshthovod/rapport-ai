@@ -10,6 +10,31 @@ export interface ProviderCapabilities {
   maxContextTokens: number;
 }
 
+export interface ProviderPromptRequest {
+  conversationSummary: string;
+  latestMessages: string[];
+  detectedTone: string;
+  objective?: string;
+  requestedReplyStyle?: string;
+  maxSuggestions?: number;
+}
+
+export interface AISuggestion {
+  id: string;
+  text: string;
+  tone: string;
+  style: string;
+  explanation: string;
+  confidence: number;
+}
+
+export interface MultiAISuggestionResponse {
+  suggestions: AISuggestion[];
+  summary: string;
+  detectedTone: string;
+  providerId: string;
+}
+
 export interface AIRequest {
   conversation: ConversationContext;
   structuredContext?: StructuredAIContext;
@@ -23,6 +48,7 @@ export interface AIResponse {
   reasoning: string;
   tone: string;
   providerId: string;
+  suggestions?: AISuggestion[];
   metadata?: Record<string, unknown>;
 }
 
@@ -36,6 +62,7 @@ export interface FakeAIResponse {
   suggestedReply: string;
   reasoning: string;
   tone: string;
+  suggestions?: AISuggestion[];
 }
 
 export interface AIReplyRequestPayload {
