@@ -1,16 +1,19 @@
 import { AIRequest, ProviderResult } from '@rapport/shared';
 import { ContextEngine } from '../context/ContextEngine.js';
 import { PromptComposer } from '../prompts/PromptComposer.js';
-import { ProviderRegistry } from '../providers/ProviderRegistry.js';
+import { ProviderManager } from '../providers/ProviderManager.js';
 
 export class AIService {
-  private readonly registry: ProviderRegistry;
+  private readonly providerManager: ProviderManager;
 
-  constructor(registry?: ProviderRegistry) {
-    this.registry = registry || ProviderRegistry.getInstance();
+  constructor(providerManager?: ProviderManager) {
+    this.providerManager = providerManager || ProviderManager.getInstance();
   }
 
-  public async generateReply(request: AIRequest): Promise<ProviderResult> {
+  public async generateReply(
+    request: AIRequest,
+    options?: { signal?: AbortSignal }
+  ): Promise<ProviderResult> {
     try {
       if (!request || !request.conversation) {
         return {
@@ -33,8 +36,8 @@ export class AIService {
         compiledPrompt,
       };
 
-      const provider = this.registry.getProvider(request.providerId);
-      const result = await provider.generateReply(enrichedRequest);
+      // 3. Route request to active provider with automatic fallback and cancellation support
+      const result = await this.providerManager.executeWithFallback(enrichedRequest, options);
       return result;
     } catch (err) {
       return {

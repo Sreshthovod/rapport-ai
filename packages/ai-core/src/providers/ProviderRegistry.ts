@@ -25,6 +25,10 @@ export class ProviderRegistry {
     this.providers.set(provider.id, provider);
   }
 
+  public hasProvider(id: string): boolean {
+    return this.providers.has(id);
+  }
+
   public getProvider(id?: string): AIProvider {
     const targetId = id || this.defaultProviderId;
     const provider = this.providers.get(targetId);

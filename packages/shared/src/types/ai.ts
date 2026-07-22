@@ -13,6 +13,24 @@ export interface ProviderCapabilities {
   maxContextTokens: number;
 }
 
+export interface ProviderMetrics {
+  providerId: string;
+  model: string;
+  latencyMs: number;
+  tokens?: number;
+  success: boolean;
+  timestamp: number;
+  error?: string;
+}
+
+export interface ProviderConfig {
+  activeProviderId: string;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  fallbackProviderId?: string;
+}
+
 export interface ProviderPromptRequest {
   conversationSummary: string;
   latestMessages: string[];
