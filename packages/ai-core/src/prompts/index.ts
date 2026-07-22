@@ -17,7 +17,7 @@ RULES:
 `.trim();
 
 export { TemplateRegistry } from './TemplateRegistry.js';
-export { PromptComposer } from './PromptComposer.js';
+export { PromptComposer, DEBUG_AI_PIPELINE } from './PromptComposer.js';
 export { ResponseEvaluator } from './ResponseEvaluator.js';
 export { MemoryPromptBudget } from './MemoryPromptBudget.js';
 export * from './fixtures.js';

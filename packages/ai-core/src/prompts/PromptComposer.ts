@@ -8,6 +8,8 @@ import {
 import { MemoryPromptBudget } from './MemoryPromptBudget.js';
 import { TemplateRegistry } from './TemplateRegistry.js';
 
+export const DEBUG_AI_PIPELINE = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+
 export class PromptComposer {
   public static readonly CURRENT_VERSION = 'v1.0.0';
 
@@ -37,7 +39,7 @@ export class PromptComposer {
     const budgetedMemory = MemoryPromptBudget.budgetMemories(memoryContext);
 
     // Dev-Mode Prompt Debugging
-    if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+    if (DEBUG_AI_PIPELINE) {
       if (budgetedMemory.selectedMemories.length > 0) {
         console.debug('[PromptComposer Dev Debug] Selected Memories:', budgetedMemory.selectedMemories.map((m) => m.title));
         console.debug('[PromptComposer Dev Debug] Discarded Memories:', budgetedMemory.discardedMemories.map((m) => m.title));
