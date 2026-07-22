@@ -1,3 +1,4 @@
+import { MemoryRetriever } from '@rapport/memory';
 import {
   ChatMessage,
   ConversationContext,
@@ -70,5 +71,25 @@ export class ContextEngine {
       intelligence,
       relationship,
     };
+  }
+
+  public static async processContextAsync(rawContext: ConversationContext): Promise<StructuredAIContext> {
+    const baseContext = ContextEngine.processContext(rawContext);
+    const contactId = rawContext?.contact?.id || 'unknown';
+
+    try {
+      const memoryContext = await MemoryRetriever.getInstance().retrieveMemoryContext({
+        contactId,
+        currentTopic: baseContext.summary?.currentTopic,
+        recentKeywords: baseContext.summary?.pendingQuestions || [],
+      });
+      return {
+        ...baseContext,
+        memoryContext,
+      };
+    } catch {
+      // Resilient fallback: continue with base conversation context only if memory retrieval fails
+      return baseContext;
+    }
   }
 }

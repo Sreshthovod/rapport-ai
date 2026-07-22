@@ -1,9 +1,11 @@
+import { MemoryContext } from '@rapport/memory';
 import {
   CompiledPromptSpec,
   PromptConstraints,
   PromptGoal,
   StructuredAIContext,
 } from '@rapport/shared';
+import { MemoryPromptBudget } from './MemoryPromptBudget.js';
 import { TemplateRegistry } from './TemplateRegistry.js';
 
 export class PromptComposer {
@@ -30,13 +32,28 @@ export class PromptComposer {
     const suggestedGoal = context.intelligence?.suggestedGoal || context.summary?.suggestedGoal || 'General Alignment';
     const relationshipType = context.relationship?.relationshipType || 'unknown';
 
+    // Budget long-term memories
+    const memoryContext = context.memoryContext as MemoryContext | undefined;
+    const budgetedMemory = MemoryPromptBudget.budgetMemories(memoryContext);
+
+    // Dev-Mode Prompt Debugging
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+      if (budgetedMemory.selectedMemories.length > 0) {
+        console.debug('[PromptComposer Dev Debug] Selected Memories:', budgetedMemory.selectedMemories.map((m) => m.title));
+        console.debug('[PromptComposer Dev Debug] Discarded Memories:', budgetedMemory.discardedMemories.map((m) => m.title));
+        console.debug(`[PromptComposer Dev Debug] Memory Chars: ${budgetedMemory.charCountBefore} -> ${budgetedMemory.charCountAfter}`);
+      }
+    }
+
+    const memorySection = budgetedMemory.promptSection ? `\n${budgetedMemory.promptSection}\n` : '';
+
     const systemPrompt = `
 You are Rapport AI (version ${PromptComposer.CURRENT_VERSION}), a world-class conversation copilot.
 GOAL: ${goal}
 DIRECTIVE: ${template.systemDirective}
 RELATIONSHIP TYPE: ${relationshipType.toUpperCase()}
 TARGET TONE: ${detectedTone}
-
+${memorySection}
 CONSTRAINTS:
 - Never sound robotic: ${constraints.neverSoundRobotic}
 - Avoid repetition: ${constraints.avoidRepetition}

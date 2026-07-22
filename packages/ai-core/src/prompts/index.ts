@@ -19,3 +19,5 @@ RULES:
 export { TemplateRegistry } from './TemplateRegistry.js';
 export { PromptComposer } from './PromptComposer.js';
 export { ResponseEvaluator } from './ResponseEvaluator.js';
+export { MemoryPromptBudget } from './MemoryPromptBudget.js';
+export * from './fixtures.js';

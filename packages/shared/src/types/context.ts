@@ -89,4 +89,5 @@ export interface StructuredAIContext {
   pendingQuestions: string[];
   intelligence?: ConversationIntelligence;
   relationship?: RelationshipContext;
+  memoryContext?: unknown;
 }
