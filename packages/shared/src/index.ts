@@ -10,3 +10,4 @@ export * from './types/relationship.js';
 export * from './types/prompt.js';
 export * from './types/copilot.js';
 export * from './context/index.js';
+export * from './debug/AIPipelineInspector.js';
