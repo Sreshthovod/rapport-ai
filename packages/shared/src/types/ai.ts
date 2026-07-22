@@ -6,11 +6,25 @@ import { CompiledPromptSpec } from './prompt.js';
 
 export const RAPPORT_AI_GENERATE_REPLY = 'RAPPORT_AI_GENERATE_REPLY';
 
+export type SuggestionCategory =
+  | 'Quick Reply'
+  | 'Natural Reply'
+  | 'Funny Reply'
+  | 'Professional Reply'
+  | 'Flirty Reply'
+  | 'Short Reply'
+  | 'Detailed Reply'
+  | 'Follow-up Question'
+  | 'Conversation Starter'
+  | 'Conversation Saver'
+  | 'Empathetic Reply';
+
 export interface ProviderCapabilities {
   supportsStreaming: boolean;
   supportsVision: boolean;
   supportsCustomSystemPrompts: boolean;
   maxContextTokens: number;
+  supportedModels: string[];
 }
 
 export interface ProviderMetrics {
@@ -29,6 +43,8 @@ export interface ProviderConfig {
   temperature?: number;
   maxTokens?: number;
   fallbackProviderId?: string;
+  maxRetries?: number;
+  timeoutMs?: number;
 }
 
 export interface ProviderPromptRequest {
@@ -48,8 +64,10 @@ export interface AISuggestion {
   text: string;
   tone: string;
   style: string;
+  category?: SuggestionCategory;
   explanation: string;
   confidence: number;
+  pinned?: boolean;
 }
 
 export interface MultiAISuggestionResponse {
@@ -87,7 +105,9 @@ export interface FakeAIResponse {
   suggestedReply: string;
   reasoning: string;
   tone: string;
+  providerId?: string;
   suggestions?: AISuggestion[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface AIReplyRequestPayload {

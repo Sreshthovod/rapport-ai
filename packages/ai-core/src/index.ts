@@ -11,6 +11,8 @@ export { GeminiProvider } from './providers/GeminiProvider.js';
 export { ProviderRegistry } from './providers/ProviderRegistry.js';
 export { ProviderManager } from './providers/ProviderManager.js';
 export { ApiKeyManager } from './providers/ApiKeyManager.js';
+export { ModelRegistry } from './providers/ModelRegistry.js';
 export { MetricsTracker } from './providers/MetricsTracker.js';
 export { AIService } from './services/AIService.js';
 export { FakeAIService } from './services/FakeAIService.js';
+export { SettingsManager } from './services/SettingsManager.js';

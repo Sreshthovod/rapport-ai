@@ -13,10 +13,11 @@ export class FakeProvider implements AIProvider {
   public readonly name = 'Deterministic Fake AI Provider';
 
   public readonly capabilities: ProviderCapabilities = {
-    supportsStreaming: false,
+    supportsStreaming: true,
     supportsVision: false,
     supportsCustomSystemPrompts: true,
     maxContextTokens: 4096,
+    supportedModels: ['fake-deterministic'],
   };
 
   public async generateReply(request: AIRequest): Promise<ProviderResult> {
@@ -62,36 +63,21 @@ export class FakeProvider implements AIProvider {
         compiledPrompt,
       };
 
-      // ----------------------------------------------------------------
-      // Context-aware suggestion generation
-      // Context signals used (in priority order):
-      //   1. Pending unanswered questions (must address these)
-      //   2. Unconfirmed plans / scheduling
-      //   3. Promises & commitments made
-      //   4. Primary detected intent
-      //   5. Relationship type + preferred tone
-      //   6. Conversation stage fallback
-      // ----------------------------------------------------------------
-
       const suggestions: AISuggestion[] = [];
 
       const hasUnansweredQuestion =
         pendingItems?.questionsAwaitingReply && pendingItems.questionsAwaitingReply.length > 0;
       const hasUnconfirmedPlan =
         pendingItems?.unconfirmedPlans && pendingItems.unconfirmedPlans.length > 0;
-      const hasPromise = pendingItems?.promises && pendingItems.promises.length > 0;
       const hasPlanningIntent = primaryIntent === 'Making Plans' || stage === 'Planning';
       const hasThanksIntent =
         lastMsg.toLowerCase().includes('thanks') || lastMsg.toLowerCase().includes('thank you');
       const hasGreetingIntent = primaryIntent === 'Greeting';
-      const hasQuestionIntent = primaryIntent === 'Asking Question' || hasUnansweredQuestion;
       const isWorkRelationship = relationshipType === 'work';
       const isFamilyRelationship = relationshipType === 'family';
       const isOneSidedConversation = isOneSided;
 
-      // Derive name to use in responses (use contact name, not generic "there")
       const nameLabel = contactName && contactName !== 'Unknown' ? contactName : '';
-      const nameRef = nameLabel ? `${nameLabel}` : '';
       const nameGreet = nameLabel ? `, ${nameLabel}` : '';
 
       if (hasUnansweredQuestion && pendingItems?.questionsAwaitingReply) {
@@ -102,6 +88,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Professional Reply',
               tone: 'Professional',
               style: 'Direct & Clear',
               text: `Regarding "${shortQ}" — I'll have an update for you shortly.`,
@@ -110,6 +97,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Warm & Direct',
               text: `Good question${nameGreet}! Let me look into that and get back to you.`,
@@ -118,6 +106,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Quick Reply',
               tone: 'Professional',
               style: 'Concise',
               text: `I'll follow up on this before EOD.`,
@@ -126,6 +115,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Quick',
               text: `On it — will update you shortly!`,
@@ -137,6 +127,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Warm & Helpful',
               text: `Great question${nameGreet}! Let me think about that and get back to you in a bit.`,
@@ -145,6 +136,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Empathetic Reply',
               tone: 'Casual',
               style: 'Honest',
               text: `Hmm, let me figure that out${nameGreet} — I want to give you a proper answer!`,
@@ -153,6 +145,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Funny Reply',
               tone: 'Playful',
               style: 'Light',
               text: `Give me a sec to think on that one! 🤔`,
@@ -161,6 +154,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Quick Reply',
               tone: 'Short',
               style: 'Concise',
               text: `On it! Give me a moment.`,
@@ -176,6 +170,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Professional Reply',
               tone: 'Professional',
               style: 'Structured & Clear',
               text: `I'll check my calendar and confirm our availability for ${planHint}.`,
@@ -184,6 +179,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Natural Reply',
               tone: 'Professional',
               style: 'Collaborative',
               text: `Sounds like a plan${nameGreet}. Let me review the timing and confirm shortly.`,
@@ -192,6 +188,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Quick Reply',
               tone: 'Friendly',
               style: 'Warm',
               text: `That works for me! Let me double-check my schedule and I'll confirm.`,
@@ -200,6 +197,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Concise',
               text: `Checking calendar now! 🗓️`,
@@ -211,6 +209,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Warm & Enthusiastic',
               text: `That sounds great${nameGreet}! Let me check my calendar real quick — I'll get back to you.`,
@@ -219,6 +218,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Quick Reply',
               tone: 'Casual',
               style: 'Relaxed',
               text: `Yeah let's do it! I'll just confirm timing and let you know.`,
@@ -227,6 +227,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Funny Reply',
               tone: 'Playful',
               style: 'Fun',
               text: `Consulting my very busy imaginary schedule right now 🔮 — pretty sure I'm free!`,
@@ -235,6 +236,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Concise',
               text: `Sounds good! Checking now 🗓️`,
@@ -248,6 +250,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Empathetic Reply',
               tone: 'Warm',
               style: 'Family-like',
               text: `Of course${nameGreet}! That's what family's for. 😊`,
@@ -256,6 +259,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Heartfelt',
               text: `Always${nameGreet}! No need to thank me.`,
@@ -264,6 +268,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Funny Reply',
               tone: 'Playful',
               style: 'Light',
               text: `You owe me dinner though! 😄`,
@@ -272,6 +277,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Quick',
               text: `Anytime! ❤️`,
@@ -283,6 +289,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Professional Reply',
               tone: 'Professional',
               style: 'Courteous',
               text: `You're welcome${nameGreet}. Please don't hesitate to reach out if you need anything else.`,
@@ -291,6 +298,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Warm Professional',
               text: `Happy to help${nameGreet}! Let me know if there's anything else I can do.`,
@@ -299,6 +307,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Quick Reply',
               tone: 'Professional',
               style: 'Direct',
               text: `Of course. Happy to support whenever needed.`,
@@ -307,6 +316,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Concise',
               text: `Of course! Always happy to help. 👍`,
@@ -318,6 +328,7 @@ export class FakeProvider implements AIProvider {
           suggestions.push(
             {
               id: 'sug_1',
+              category: 'Natural Reply',
               tone: 'Friendly',
               style: 'Warm & Natural',
               text: `Anytime${nameGreet}! Always happy to help. 😊`,
@@ -326,6 +337,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_2',
+              category: 'Quick Reply',
               tone: 'Casual',
               style: 'Easy-going',
               text: `No worries at all! That's what I'm here for.`,
@@ -334,6 +346,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_3',
+              category: 'Funny Reply',
               tone: 'Playful',
               style: 'Fun',
               text: `Don't mention it! Coffee is on you next time though ☕😄`,
@@ -342,6 +355,7 @@ export class FakeProvider implements AIProvider {
             },
             {
               id: 'sug_4',
+              category: 'Short Reply',
               tone: 'Short',
               style: 'Concise',
               text: `Happy to help! 👍`,
@@ -355,6 +369,7 @@ export class FakeProvider implements AIProvider {
         suggestions.push(
           {
             id: 'sug_1',
+            category: 'Natural Reply',
             tone: preferredTone,
             style: 'Natural',
             text: `Hey${nameGreet}! ${greeting} 😊`,
@@ -363,6 +378,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_2',
+            category: 'Follow-up Question',
             tone: 'Friendly',
             style: 'Curious',
             text: `Hey${nameGreet}! Good to hear from you — what's up?`,
@@ -371,6 +387,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_3',
+            category: 'Funny Reply',
             tone: 'Playful',
             style: 'Fun',
             text: `Hey${nameGreet}! 👋 What's going on?`,
@@ -379,6 +396,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_4',
+            category: 'Short Reply',
             tone: 'Short',
             style: 'Concise',
             text: `Hey! 😊`,
@@ -387,10 +405,10 @@ export class FakeProvider implements AIProvider {
           }
         );
       } else if (isOneSidedConversation) {
-        // One-sided conversation — nudge them to respond
         suggestions.push(
           {
             id: 'sug_1',
+            category: 'Conversation Saver',
             tone: 'Friendly',
             style: 'Curious',
             text: `Hey${nameGreet}! Just checking in — how are things on your end?`,
@@ -399,6 +417,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_2',
+            category: 'Quick Reply',
             tone: 'Casual',
             style: 'Light',
             text: `Haven't heard back${nameGreet} — all good? 😊`,
@@ -407,6 +426,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_3',
+            category: 'Funny Reply',
             tone: 'Playful',
             style: 'Light',
             text: `Sending you a virtual nudge 👋 — still there?`,
@@ -415,6 +435,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_4',
+            category: 'Short Reply',
             tone: 'Short',
             style: 'Quick',
             text: `Hey, you there? 😄`,
@@ -423,7 +444,6 @@ export class FakeProvider implements AIProvider {
           }
         );
       } else {
-        // Generic fallback — still use relationship + tone signals
         const baseText =
           isWorkRelationship
             ? `Sounds completely aligned${nameGreet}. I'll keep you posted.`
@@ -434,6 +454,7 @@ export class FakeProvider implements AIProvider {
         suggestions.push(
           {
             id: 'sug_1',
+            category: 'Natural Reply',
             tone: preferredTone,
             style: 'Natural',
             text: baseText,
@@ -442,6 +463,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_2',
+            category: 'Follow-up Question',
             tone: 'Friendly',
             style: 'Engaging',
             text: `That's great${nameGreet}! What else is on your mind?`,
@@ -450,6 +472,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_3',
+            category: 'Funny Reply',
             tone: 'Playful',
             style: 'Fun',
             text: `100%! As long as there are good vibes involved, count me in! 🎉`,
@@ -458,6 +481,7 @@ export class FakeProvider implements AIProvider {
           },
           {
             id: 'sug_4',
+            category: 'Short Reply',
             tone: 'Short',
             style: 'Concise',
             text: `Sounds good to me!`,
@@ -467,7 +491,6 @@ export class FakeProvider implements AIProvider {
         );
       }
 
-      // Evaluate primary suggestion
       const primarySuggestion = suggestions[0];
       let evaluation = null;
       if (compiledPrompt) {
@@ -507,5 +530,30 @@ export class FakeProvider implements AIProvider {
         error: err instanceof Error ? err.message : 'FakeProvider failed to generate response.',
       };
     }
+  }
+
+  public async generateReplyStream(
+    request: AIRequest,
+    onChunk: (chunkText: string) => void,
+    options?: { signal?: AbortSignal }
+  ): Promise<ProviderResult> {
+    const fullResult = await this.generateReply(request);
+    if (!fullResult.success || !fullResult.data) {
+      return fullResult;
+    }
+
+    const textToStream = fullResult.data.suggestedReply;
+    const words = textToStream.split(' ');
+
+    for (let i = 0; i < words.length; i++) {
+      if (options?.signal?.aborted) {
+        return { success: false, error: 'Streaming cancelled by user.' };
+      }
+      const word = i === words.length - 1 ? words[i] : `${words[i]} `;
+      onChunk(word);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return fullResult;
   }
 }

@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { AISuggestion, FakeAIResponse } from '@rapport/shared';
+import React, { useEffect, useRef, useState } from 'react';
+import { AISuggestion, CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
+import { SettingsView } from './SettingsView.js';
 
 export interface AIModalProps {
   visible: boolean;
   loading: boolean;
+  streamingText?: string;
   data?: FakeAIResponse | null;
   error?: string | null;
+  compiledPrompt?: CompiledPromptSpec | null;
   onInsert?: (text: string) => void;
   onRegenerate?: () => void;
   onClose: () => void;
-  /** Dynamic copilot recommendation tip from CopilotEngine. Omit to hide the chip. */
+  /** Dynamic copilot recommendation tip from CopilotEngine */
   copilotTip?: string;
 }
 
@@ -18,28 +21,94 @@ const getToneColor = (tone: string): { bg: string; border: string; text: string 
   if (normalized.includes('professional') || normalized.includes('formal')) {
     return { bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)', text: '#3b82f6' };
   }
-  if (normalized.includes('funny') || normalized.includes('playful')) {
+  if (normalized.includes('funny') || normalized.includes('playful') || normalized.includes('humorous')) {
     return { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.3)', text: '#f59e0b' };
   }
-  if (normalized.includes('short') || normalized.includes('concise')) {
+  if (normalized.includes('short') || normalized.includes('quick')) {
     return { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)', text: '#a855f7' };
   }
-  return { bg: 'rgba(0, 168, 132, 0.15)', border: 'rgba(0, 168, 132, 0.3)', text: 'var(--rapport-accent)' };
+  if (normalized.includes('flirty') || normalized.includes('romantic')) {
+    return { bg: 'rgba(236, 72, 153, 0.15)', border: 'rgba(236, 72, 153, 0.3)', text: '#ec4899' };
+  }
+  return { bg: 'rgba(0, 168, 132, 0.15)', border: 'rgba(0, 168, 132, 0.3)', text: 'var(--rapport-accent, #00a884)' };
 };
 
 export const AIModal: React.FC<AIModalProps> = ({
   visible,
   loading,
+  streamingText,
   data,
   error,
+  compiledPrompt,
   onInsert,
   onRegenerate,
   onClose,
   copilotTip,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('All');
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [showDevPanel, setShowDevPanel] = useState<boolean>(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
+
+  // Dragging state
+  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number }>({
+    startX: 0,
+    startY: 0,
+    posX: 0,
+    posY: 0,
+  });
+
+  // Handle Keyboard Shortcuts (Esc, Cmd/Ctrl+Enter, Tab)
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        if (onRegenerate && !loading) onRegenerate();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [visible, loading, onRegenerate, onClose]);
 
   if (!visible) return null;
+
+  // Handle Dragging
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: position.x,
+      posY: position.y,
+    };
+
+    const handleMouseMove = (me: MouseEvent) => {
+      const dx = me.clientX - dragRef.current.startX;
+      const dy = me.clientY - dragRef.current.startY;
+      setPosition({
+        x: dragRef.current.posX + dx,
+        y: dragRef.current.posY + dy,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   const handleCopy = (text: string, id: string) => {
     try {
@@ -47,7 +116,6 @@ export const AIModal: React.FC<AIModalProps> = ({
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
-      // Fallback copy
       const textArea = document.createElement('textarea');
       textArea.value = text;
       document.body.appendChild(textArea);
@@ -59,7 +127,16 @@ export const AIModal: React.FC<AIModalProps> = ({
     }
   };
 
-  const suggestions: AISuggestion[] = data?.suggestions || (data ? [{
+  const togglePin = (id: string) => {
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const rawSuggestions: AISuggestion[] = data?.suggestions || (data ? [{
     id: 'single_1',
     text: data.suggestedReply,
     tone: data.tone,
@@ -68,74 +145,136 @@ export const AIModal: React.FC<AIModalProps> = ({
     confidence: 0.9,
   }] : []);
 
+  // Filter & Sort (pinned options stay on top)
+  const filteredSuggestions = rawSuggestions.filter((s) => {
+    if (activeCategoryFilter === 'All') return true;
+    if (activeCategoryFilter === 'Quick') return s.category === 'Quick Reply' || s.text.length < 30;
+    if (activeCategoryFilter === 'Natural') return s.category === 'Natural Reply';
+    if (activeCategoryFilter === 'Professional') return s.category === 'Professional Reply' || s.tone === 'Professional';
+    if (activeCategoryFilter === 'Funny') return s.category === 'Funny Reply' || s.tone === 'Playful';
+    if (activeCategoryFilter === 'Flirty') return s.category === 'Flirty Reply' || s.tone === 'Flirty';
+    return true;
+  });
+
+  const suggestions = [...filteredSuggestions].sort((a, b) => {
+    const aPin = pinnedIds.has(a.id) ? 1 : 0;
+    const bPin = pinnedIds.has(b.id) ? 1 : 0;
+    return bPin - aPin;
+  });
+
+  // Extract Metadata Badges
+  const metadata = data?.metadata || {};
+  const providerId = (metadata.providerId as string) || data?.providerId || 'fake-provider';
+  const modelName = (metadata.model as string) || 'Default Model';
+  const latencyMs = metadata.latencyMs ? `${metadata.latencyMs}ms` : null;
+  const contextSignals = (metadata.contextSignals as any) || {};
+
   return (
     <div
       className="rapport-animate-enter"
       style={{
         marginTop: '8px',
-        width: '380px',
-        maxHeight: 'min(540px, 78vh)',
+        width: '420px',
+        maxHeight: 'min(640px, 85vh)',
+        transform: `translate(${position.x}px, ${position.y}px)`,
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--rapport-bg)',
-        border: '1px solid var(--rapport-border)',
-        borderRadius: 'var(--rapport-radius)',
-        boxShadow: 'var(--rapport-shadow)',
+        background: 'var(--rapport-bg, #1e2227)',
+        border: '1px solid var(--rapport-border, rgba(255, 255, 255, 0.12))',
+        borderRadius: '12px',
+        boxShadow: '0 16px 36px rgba(0, 0, 0, 0.35)',
         padding: '16px',
-        fontFamily: 'var(--rapport-font-family)',
-        color: 'var(--rapport-text-primary)',
-        backdropFilter: 'blur(10px)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        color: 'var(--rapport-text-primary, #ffffff)',
+        backdropFilter: 'blur(16px)',
         overflow: 'hidden',
         boxSizing: 'border-box',
+        zIndex: 99999,
+        resize: 'both',
       }}
     >
-      {/* Pinned Header */}
+      {/* Modal Header — Draggable */}
       <div
+        onMouseDown={handleMouseDown}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '10px',
           paddingBottom: '8px',
-          borderBottom: '1px solid var(--rapport-border)',
+          borderBottom: '1px solid var(--rapport-border, rgba(255, 255, 255, 0.1))',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          userSelect: 'none',
           flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--rapport-accent)' }}>
+          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--rapport-accent, #00a884)' }}>
             Rapport AI Copilot
           </span>
           <span
             style={{
               fontSize: '10px',
-              padding: '1px 6px',
-              borderRadius: '10px',
-              background: 'var(--rapport-hover-bg)',
-              color: 'var(--rapport-text-secondary)',
-              border: '1px solid var(--rapport-border)',
+              padding: '2px 6px',
+              borderRadius: '8px',
+              background: 'rgba(255, 255, 255, 0.08)',
+              color: '#9ca3af',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
             }}
           >
-            Offline Model
+            {providerId}
           </span>
+          {latencyMs && (
+            <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>
+              ⚡ {latencyMs}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            onClick={() => setShowDevPanel(!showDevPanel)}
+            style={{
+              background: showDevPanel ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '4px',
+              color: showDevPanel ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
+              cursor: 'pointer',
+              fontSize: '11px',
+              padding: '2px 6px',
+            }}
+            title="Toggle Developer Observability Inspector"
+          >
+            🛠️ Dev
+          </button>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            style={{
+              background: showSettings ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              borderRadius: '4px',
+              color: showSettings ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
+              cursor: 'pointer',
+              fontSize: '11px',
+              padding: '2px 6px',
+            }}
+            title="Open Settings"
+          >
+            ⚙️
+          </button>
           {onRegenerate && !loading && (
             <button
               onClick={onRegenerate}
               style={{
                 background: 'transparent',
-                border: '1px solid var(--rapport-border)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '4px',
-                color: 'var(--rapport-text-secondary)',
+                color: '#9ca3af',
                 cursor: 'pointer',
-                fontSize: '12px',
+                fontSize: '11px',
                 padding: '2px 6px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
               }}
-              title="Regenerate Suggestions"
+              title="Regenerate (Cmd+Enter)"
             >
               🔄 Refresh
             </button>
@@ -145,7 +284,7 @@ export const AIModal: React.FC<AIModalProps> = ({
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--rapport-text-secondary)',
+              color: '#9ca3af',
               cursor: 'pointer',
               fontSize: '14px',
               padding: '2px 4px',
@@ -157,183 +296,291 @@ export const AIModal: React.FC<AIModalProps> = ({
         </div>
       </div>
 
-      {/* Proactive Copilot Recommendation Tip — only rendered when a live tip is available */}
-      {copilotTip && (
-        <div
-          style={{
-            background: 'rgba(0, 168, 132, 0.1)',
-            border: '1px solid rgba(0, 168, 132, 0.25)',
-            borderRadius: '6px',
-            padding: '6px 10px',
-            marginBottom: '10px',
-            fontSize: '11px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-            <span>💡</span>
-            <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Copilot Tip:</span>
-            <span style={{ color: 'var(--rapport-text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-              {copilotTip}
-            </span>
-          </div>
+      {/* Embedded Settings Modal Overlay */}
+      {showSettings && (
+        <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
+          <SettingsView onClose={() => setShowSettings(false)} />
         </div>
       )}
 
-      {/* Scrollable Body List */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          paddingRight: '4px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
-        {/* Loading State */}
-        {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0', gap: '10px' }}>
+      {!showSettings && (
+        <>
+          {/* Proactive Copilot Recommendation Tip */}
+          {copilotTip && (
             <div
               style={{
-                width: '26px',
-                height: '26px',
-                border: '2px solid var(--rapport-border)',
-                borderTopColor: 'var(--rapport-accent)',
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
+                background: 'rgba(0, 168, 132, 0.12)',
+                border: '1px solid rgba(0, 168, 132, 0.3)',
+                borderRadius: '6px',
+                padding: '6px 10px',
+                marginBottom: '8px',
+                fontSize: '11px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                flexShrink: 0,
               }}
-            />
-            <span style={{ fontSize: '12px', color: 'var(--rapport-text-secondary)', fontWeight: 500 }}>
-              Analyzing conversation & generating replies...
-            </span>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
+            >
+              <span>💡</span>
+              <span style={{ fontWeight: 600, color: 'var(--rapport-accent, #00a884)' }}>Copilot Tip:</span>
+              <span style={{ color: '#ffffff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                {copilotTip}
+              </span>
+            </div>
+          )}
 
-        {/* Error State */}
-        {!loading && error && (
-          <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
-            <div style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)' }}>{error}</div>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && (!data || suggestions.length === 0) && (
-          <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--rapport-text-secondary)', fontSize: '12px' }}>
-            No conversation thread selected. Open a chat in WhatsApp Web to generate contextual suggestions.
-          </div>
-        )}
-
-        {/* Suggestions Cards */}
-        {!loading && !error && suggestions.length > 0 && (
-          suggestions.map((sug) => {
-            const toneStyle = getToneColor(sug.tone);
-            const isCopied = copiedId === sug.id;
-
-            return (
-              <div
-                key={sug.id}
+          {/* Category Filter Tabs */}
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', overflowX: 'auto', flexShrink: 0 }}>
+            {['All', 'Quick', 'Natural', 'Professional', 'Funny', 'Flirty'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategoryFilter(cat)}
                 style={{
-                  background: 'var(--rapport-hover-bg)',
-                  border: '1px solid var(--rapport-border)',
-                  borderRadius: '8px',
-                  padding: '10px 12px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  transition: 'var(--rapport-transition-fast)',
+                  padding: '3px 9px',
+                  borderRadius: '12px',
+                  border: activeCategoryFilter === cat ? '1px solid var(--rapport-accent, #00a884)' : '1px solid rgba(255, 255, 255, 0.1)',
+                  background: activeCategoryFilter === cat ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
+                  color: activeCategoryFilter === cat ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
+                  fontSize: '10.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
                 }}
               >
-                {/* Card Header: Tone & Confidence */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      background: toneStyle.bg,
-                      border: `1px solid ${toneStyle.border}`,
-                      borderRadius: '12px',
-                      color: toneStyle.text,
-                      fontSize: '11px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {sug.tone}
-                  </span>
-                  <span style={{ fontSize: '10px', color: 'var(--rapport-text-secondary)' }}>
-                    {Math.round((sug.confidence || 0.9) * 100)}% match
-                  </span>
-                </div>
+                {cat}
+              </button>
+            ))}
+          </div>
 
-                {/* Suggestion Quote Text */}
+          {/* Scrollable Body List */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              paddingRight: '4px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            {/* Real-Time Streaming Text Display */}
+            {loading && streamingText && (
+              <div
+                style={{
+                  padding: '12px',
+                  background: 'rgba(0, 168, 132, 0.08)',
+                  border: '1px solid rgba(0, 168, 132, 0.3)',
+                  borderRadius: '8px',
+                  fontSize: '12.5px',
+                  lineHeight: '1.45',
+                  color: '#ffffff',
+                }}
+              >
+                <div style={{ fontSize: '10px', color: 'var(--rapport-accent, #00a884)', fontWeight: 600, marginBottom: '4px' }}>
+                  ⚡ STREAMING RESPONSE...
+                </div>
+                "{streamingText}"
+                <span className="blinking-cursor" style={{ fontWeight: 'bold', color: 'var(--rapport-accent, #00a884)' }}>|</span>
+              </div>
+            )}
+
+            {/* Standard Loading Spinner State */}
+            {loading && !streamingText && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0', gap: '10px' }}>
                 <div
                   style={{
-                    fontSize: '12.5px',
-                    lineHeight: '1.45',
-                    color: 'var(--rapport-text-primary)',
-                    fontWeight: 500,
-                    background: 'var(--rapport-bg)',
-                    padding: '8px 10px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--rapport-border)',
+                    width: '26px',
+                    height: '26px',
+                    border: '2px solid rgba(255, 255, 255, 0.1)',
+                    borderTopColor: 'var(--rapport-accent, #00a884)',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
                   }}
-                >
-                  "{sug.text}"
-                </div>
+                />
+                <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 500 }}>
+                  Orchestrating context & generating suggestions...
+                </span>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              </div>
+            )}
 
-                {/* Explanation */}
-                <div style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)', fontStyle: 'italic' }}>
-                  {sug.explanation}
-                </div>
+            {/* Error State */}
+            {!loading && error && (
+              <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', borderRadius: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
+                <div style={{ fontSize: '11px', color: '#d1d5db' }}>{error}</div>
+              </div>
+            )}
 
-                {/* Action Buttons: Copy & Insert */}
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '2px' }}>
-                  <button
-                    onClick={() => handleCopy(sug.text, sug.id)}
+            {/* Empty State */}
+            {!loading && !error && (!data || suggestions.length === 0) && (
+              <div style={{ padding: '24px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>
+                No active chat selected. Open a thread in WhatsApp Web to generate contextual suggestions.
+              </div>
+            )}
+
+            {/* Suggestion Cards */}
+            {!loading && !error && suggestions.length > 0 && (
+              suggestions.map((sug, idx) => {
+                const toneStyle = getToneColor(sug.tone);
+                const isCopied = copiedId === sug.id;
+                const isPinned = pinnedIds.has(sug.id);
+                const isSelected = selectedIndex === idx;
+
+                return (
+                  <div
+                    key={sug.id}
+                    onClick={() => setSelectedIndex(idx)}
                     style={{
-                      padding: '4px 10px',
-                      background: isCopied ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-                      border: `1px solid ${isCopied ? 'var(--rapport-accent)' : 'var(--rapport-border)'}`,
-                      borderRadius: '6px',
-                      color: isCopied ? 'var(--rapport-accent)' : 'var(--rapport-text-primary)',
-                      fontSize: '11px',
-                      fontWeight: 500,
+                      background: isSelected ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.02)',
+                      border: isSelected ? '1px solid var(--rapport-accent, #00a884)' : '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '8px',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      transition: 'border 0.15s ease',
                       cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'var(--rapport-transition-fast)',
                     }}
                   >
-                    {isCopied ? 'Copied! ✓' : '📋 Copy'}
-                  </button>
-                  {onInsert && (
-                    <button
-                      onClick={() => onInsert(sug.text)}
+                    {/* Card Header: Category, Tone & Pin */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {sug.category && (
+                          <span style={{ fontSize: '10px', padding: '1px 6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', color: '#d1d5db', fontWeight: 600 }}>
+                            {sug.category}
+                          </span>
+                        )}
+                        <span
+                          style={{
+                            padding: '1px 7px',
+                            background: toneStyle.bg,
+                            border: `1px solid ${toneStyle.border}`,
+                            borderRadius: '10px',
+                            color: toneStyle.text,
+                            fontSize: '10.5px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {sug.tone}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                          {Math.round((sug.confidence || 0.9) * 100)}% match
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); togglePin(sug.id); }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            color: isPinned ? '#f59e0b' : '#6b7280',
+                          }}
+                          title={isPinned ? 'Unpin' : 'Pin to top'}
+                        >
+                          📌
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Suggestion Quote Text */}
+                    <div
                       style={{
-                        padding: '4px 10px',
-                        background: 'var(--rapport-accent)',
-                        border: 'none',
-                        borderRadius: '6px',
+                        fontSize: '12.5px',
+                        lineHeight: '1.45',
                         color: '#ffffff',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
+                        fontWeight: 500,
+                        background: 'rgba(0, 0, 0, 0.2)',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(255, 255, 255, 0.05)',
                       }}
                     >
-                      Insert Draft ↵
-                    </button>
-                  )}
-                </div>
+                      "{sug.text}"
+                    </div>
+
+                    {/* Explanation */}
+                    <div style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>
+                      {sug.explanation}
+                    </div>
+
+                    {/* Action Buttons: Copy & Insert */}
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '2px' }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCopy(sug.text, sug.id); }}
+                        style={{
+                          padding: '4px 10px',
+                          background: isCopied ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
+                          border: `1px solid ${isCopied ? 'var(--rapport-accent, #00a884)' : 'rgba(255, 255, 255, 0.15)'}`,
+                          borderRadius: '6px',
+                          color: isCopied ? 'var(--rapport-accent, #00a884)' : '#ffffff',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        {isCopied ? 'Copied! ✓' : '📋 Copy'}
+                      </button>
+                      {onInsert && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onInsert(sug.text); }}
+                          style={{
+                            padding: '4px 10px',
+                            background: 'var(--rapport-accent, #00a884)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Insert Draft ↵
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Developer Observability Drawer Panel */}
+          {showDevPanel && compiledPrompt && (
+            <div
+              style={{
+                marginTop: '10px',
+                padding: '10px',
+                background: 'rgba(0, 0, 0, 0.35)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '8px',
+                fontSize: '11px',
+                maxHeight: '160px',
+                overflowY: 'auto',
+                fontFamily: 'monospace',
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ color: 'var(--rapport-accent, #00a884)', fontWeight: 'bold', marginBottom: '4px' }}>
+                🛠️ REAL-TIME AI PIPELINE INSPECTOR (v{compiledPrompt.version})
               </div>
-            );
-          })
-        )}
-      </div>
+              <div>Goal: {compiledPrompt.goal}</div>
+              <div>Relationship: {compiledPrompt.contextSnapshot.relationshipType}</div>
+              <div>Tone: {compiledPrompt.contextSnapshot.detectedTone}</div>
+              <div>Topic: {compiledPrompt.contextSnapshot.conversationSummary.slice(0, 60)}</div>
+              <div style={{ marginTop: '4px', color: '#9ca3af' }}>System Prompt Preview:</div>
+              <div style={{ whiteSpace: 'pre-wrap', color: '#d1d5db', background: 'rgba(0,0,0,0.4)', padding: '4px', borderRadius: '4px' }}>
+                {compiledPrompt.systemPrompt.slice(0, 200)}...
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };

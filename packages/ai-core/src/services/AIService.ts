@@ -82,4 +82,39 @@ export class AIService {
       };
     }
   }
+
+  public async generateReplyStream(
+    request: AIRequest,
+    onChunk: (chunkText: string) => void,
+    options?: { signal?: AbortSignal }
+  ): Promise<ProviderResult> {
+    try {
+      if (!request || !request.conversation) {
+        return {
+          success: false,
+          error: 'Invalid AI request: missing conversation context.',
+        };
+      }
+
+      const structuredContext = request.structuredContext
+        || await ContextEngine.processContextAsync(request.conversation);
+
+      const compiledPrompt = request.compiledPrompt || PromptComposer.compose({
+        context: structuredContext,
+      });
+
+      const enrichedRequest: AIRequest = {
+        ...request,
+        structuredContext,
+        compiledPrompt,
+      };
+
+      return await this.providerManager.executeStreamWithFallback(enrichedRequest, onChunk, options);
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'AIService streaming failure.',
+      };
+    }
+  }
 }

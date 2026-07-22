@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { FakeAIResponse } from '@rapport/shared';
+import { CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
 import { AIModal } from './components/AIModal.js';
 import { FloatingToolbar } from './FloatingToolbar.js';
 import { createPositioningEngine, PositioningEngine } from './Positioning.js';
@@ -28,9 +28,11 @@ export class OverlayManager {
   // AI Modal States
   private aiModalVisible: boolean = false;
   private aiModalLoading: boolean = false;
+  private streamingText: string = '';
   private aiModalData: FakeAIResponse | null = null;
   private aiModalError: string | null = null;
   private aiModalCopilotTip: string | undefined = undefined;
+  private compiledPrompt: CompiledPromptSpec | null = null;
 
   private onAIClickCallback?: () => void;
   private onInsertDraftCallback?: (text: string) => void;
@@ -72,6 +74,11 @@ export class OverlayManager {
     this.onInsertDraftCallback = callback;
   }
 
+  public setCompiledPrompt(spec: CompiledPromptSpec | null): void {
+    this.compiledPrompt = spec;
+    if (this.aiModalVisible) this.render();
+  }
+
   /** Set a live copilot tip to display inside the AI modal. Pass undefined to hide the chip. */
   public setCopilotTip(tip: string | undefined): void {
     this.aiModalCopilotTip = tip;
@@ -83,14 +90,23 @@ export class OverlayManager {
   public showAILoading(): void {
     this.aiModalVisible = true;
     this.aiModalLoading = true;
+    this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = null;
+    this.render();
+  }
+
+  public updateStreamingText(chunk: string): void {
+    this.streamingText += chunk;
+    this.aiModalVisible = true;
+    this.aiModalLoading = true;
     this.render();
   }
 
   public showAIResponse(data: FakeAIResponse): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.streamingText = '';
     this.aiModalData = data;
     this.aiModalError = null;
     this.render();
@@ -99,6 +115,7 @@ export class OverlayManager {
   public showAIError(error: string): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = error;
     this.render();
@@ -107,6 +124,7 @@ export class OverlayManager {
   public closeAIModal(): void {
     this.aiModalVisible = false;
     this.aiModalLoading = false;
+    this.streamingText = '';
     this.render();
   }
 
@@ -130,7 +148,6 @@ export class OverlayManager {
 
   private handleDragStart = (e: React.PointerEvent): void => {
     if (!this.shadowHost) return;
-    const container = this.shadowHost.containerElement;
 
     this.isDragging = true;
     const currentTop = this.customPosition ? this.customPosition.top : this.anchoredPosition.top;
@@ -243,14 +260,17 @@ export class OverlayManager {
             }
           },
           onSettingsClick: () => {
-            console.log('[RapportOverlay] Settings clicked');
+            this.aiModalVisible = true;
+            this.render();
           },
         }),
         React.createElement(AIModal, {
           visible: this.aiModalVisible,
           loading: this.aiModalLoading,
+          streamingText: this.streamingText,
           data: this.aiModalData,
           error: this.aiModalError,
+          compiledPrompt: this.compiledPrompt,
           copilotTip: this.aiModalCopilotTip,
           onClose: () => this.closeAIModal(),
           onRegenerate: () => {

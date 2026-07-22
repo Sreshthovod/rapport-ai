@@ -1,11 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { SettingsView } from '@rapport/overlay';
 
 export const SidepanelApp: React.FC = () => {
   return (
-    <div style={{ padding: '16px', fontFamily: 'sans-serif' }}>
-      <h2>Rapport AI Memory Inspector</h2>
-      <p>Local-first relationship graph management.</p>
+    <div style={{ padding: '12px', background: '#14171a', minHeight: '100vh', boxSizing: 'border-box' }}>
+      <SettingsView />
     </div>
   );
 };

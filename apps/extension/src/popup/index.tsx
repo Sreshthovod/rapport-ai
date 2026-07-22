@@ -1,11 +1,11 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { SettingsView } from '@rapport/overlay';
 
 export const PopupApp: React.FC = () => {
   return (
-    <div style={{ padding: '16px', fontFamily: 'sans-serif', minWidth: '240px' }}>
-      <h3>Rapport AI</h3>
-      <p>Local-First Interpersonal Intelligence</p>
+    <div style={{ width: '420px', padding: '8px', background: '#14171a', boxSizing: 'border-box' }}>
+      <SettingsView />
     </div>
   );
 };
