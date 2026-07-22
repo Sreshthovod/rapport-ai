@@ -133,6 +133,17 @@ export class SettingsManager {
       safe.cacheDurationMs = Math.max(0, Math.min(3600000, safe.cacheDurationMs));
     }
 
+    // Suggestion Personality mapping to temperature (only if temperature itself isn't directly modified in this update)
+    if (safe.suggestionPersonality !== undefined && safe.temperature === undefined) {
+      if (safe.suggestionPersonality === 'safe') {
+        safe.temperature = 0.3;
+      } else if (safe.suggestionPersonality === 'balanced') {
+        safe.temperature = 0.7;
+      } else if (safe.suggestionPersonality === 'creative') {
+        safe.temperature = 0.95;
+      }
+    }
+
     // Local-only mode enforcement — force offline provider
     if (safe.localOnlyMode === true) {
       safe.activeProviderId = 'fake-provider';

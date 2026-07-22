@@ -7,6 +7,7 @@ import {
 } from '@rapport/shared';
 import { MemoryPromptBudget } from './MemoryPromptBudget.js';
 import { TemplateRegistry } from './TemplateRegistry.js';
+import { SettingsManager } from '../services/SettingsManager.js';
 
 export const DEBUG_AI_PIPELINE = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
 
@@ -98,6 +99,11 @@ export class PromptComposer {
     // 3. Build the System Prompt — all relationship + style signals
     // ----------------------------------------------------------------
 
+    const settings = SettingsManager.getInstance().getSettings();
+    const modeInstruction = PromptComposer.getConversationModeInstruction(settings.conversationMode || 'natural');
+    const styleInstruction = PromptComposer.getWritingStyleInstruction(settings.writingStyle || 'usual');
+    const personalityInstruction = PromptComposer.getPersonalityInstruction(settings.suggestionPersonality || 'balanced');
+
     const styleSection = communicationStyle
       ? `COMMUNICATION STYLE: ${communicationStyle.formality} | ${communicationStyle.playfulness} | ${communicationStyle.expressiveness}`
       : '';
@@ -118,6 +124,11 @@ export class PromptComposer {
       `You are Rapport AI (version ${PromptComposer.CURRENT_VERSION}), a world-class conversation copilot.`,
       `GOAL: ${goal}`,
       `DIRECTIVE: ${template.systemDirective}`,
+      ``,
+      `=== USER PREFERENCES ===`,
+      `CONVERSATION MODE PRESET: ${modeInstruction}`,
+      `WRITING STYLE PRESET: ${styleInstruction}`,
+      `PERSONALITY STANCE: ${personalityInstruction}`,
       ``,
       `=== RELATIONSHIP CONTEXT ===`,
       `CONTACT NAME: ${contactName}`,
@@ -240,5 +251,66 @@ export class PromptComposer {
         relationshipType,
       },
     };
+  }
+
+  private static getConversationModeInstruction(mode: string): string {
+    switch (mode) {
+      case 'natural':
+        return 'Match the typical, effortless rhythm of WhatsApp messaging. Avoid over-explaining or overly formal phrases.';
+      case 'professional':
+        return 'Maintain a polite, clear, and business-appropriate tone while remaining accessible on WhatsApp.';
+      case 'warm':
+        return 'Be friendly, inviting, and emotionally close. Use warm greetings and show genuine care.';
+      case 'playful':
+        return 'Inject light humor, wit, and energetic responses where appropriate.';
+      case 'flirty':
+        return 'Be charming, engaging, and subtly playful to build a close, personal connection.';
+      case 'supportive':
+        return 'Focus on empathy, active listening, and offering help or emotional encouragement.';
+      case 'confident':
+        return 'Speak clearly, assertively, and directly, conveying competence and assurance.';
+      default:
+        return 'Maintain a natural, balanced conversational style.';
+    }
+  }
+
+  private static getWritingStyleInstruction(style: string): string {
+    switch (style) {
+      case 'usual':
+        return "Adapt dynamic style matching. Leverage the detected relationship context (formality, playfulness, engagement), conversation intelligence (detected tones/intents), and user preferences found in memory to mirror the user's natural communication patterns.";
+      case 'casual':
+        return 'Relaxed, informal, everyday language with common abbreviations and contractions.';
+      case 'friendly':
+        return 'Warm, pleasant, and highly approachable style.';
+      case 'professional':
+        return 'Polished, grammatically pristine, and respectful style.';
+      case 'short-direct':
+        return 'Very concise, omitting fluff, getting straight to the point.';
+      case 'detailed':
+        return 'Thorough, structured, and comprehensive explanations.';
+      case 'humorous':
+        return 'Witty, lighthearted, and amusing responses.';
+      case 'respectful':
+        return 'Deferential, highly polite, and honoring boundaries.';
+      case 'romantic':
+        return 'Affectionate, intimate, and deeply personal style.';
+      case 'motivational':
+        return 'Inspiring, encouraging, and positive reinforcement.';
+      default:
+        return 'Standard natural message phrasing.';
+    }
+  }
+
+  private static getPersonalityInstruction(personality: string): string {
+    switch (personality) {
+      case 'safe':
+        return 'Polite, low-risk, agreeable response ensuring safe rapport.';
+      case 'balanced':
+        return 'Naturally engaging response balancing warmth and directness.';
+      case 'creative':
+        return 'Witty, intriguing, or charismatic response with higher creative styling.';
+      default:
+        return 'Balanced response stance.';
+    }
   }
 }

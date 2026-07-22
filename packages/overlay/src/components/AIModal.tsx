@@ -258,7 +258,7 @@ export const AIModal: React.FC<AIModalProps> = ({
               fontSize: '11px',
               padding: '2px 6px',
             }}
-            title="Open Settings"
+            title="Rapport Preferences"
           >
             ⚙️
           </button>

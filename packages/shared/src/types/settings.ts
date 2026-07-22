@@ -26,6 +26,9 @@ export interface RapportSettings {
   defaultConversationStyle: ConversationStyle;
   suggestionCount: number;
   autoGenerate: boolean;
+  conversationMode: 'natural' | 'professional' | 'warm' | 'playful' | 'flirty' | 'supportive' | 'confident';
+  suggestionPersonality: 'safe' | 'balanced' | 'creative';
+  writingStyle: 'usual' | 'casual' | 'friendly' | 'professional' | 'short-direct' | 'detailed' | 'humorous' | 'respectful' | 'romantic' | 'motivational';
 
   // ── AI ─────────────────────────────────────────────────────────────────────
   activeProviderId: LLMProviderId;
@@ -76,6 +79,7 @@ export interface RapportSettings {
   showProviderLogs: boolean;
   showRequestTiming: boolean;
   showTokenUsage: boolean;
+  developerModeUnlocked: boolean;
 }
 
 export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
@@ -84,6 +88,9 @@ export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
   defaultConversationStyle: 'balanced',
   suggestionCount: 4,
   autoGenerate: true,
+  conversationMode: 'natural',
+  suggestionPersonality: 'balanced',
+  writingStyle: 'usual',
 
   // AI
   activeProviderId: 'fake-provider',
@@ -134,4 +141,5 @@ export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
   showProviderLogs: false,
   showRequestTiming: false,
   showTokenUsage: false,
+  developerModeUnlocked: false,
 };
