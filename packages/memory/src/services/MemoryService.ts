@@ -1,7 +1,9 @@
 import { BrowserStorageMemoryStore } from '../store/BrowserStorageMemoryStore.js';
 import { IMemoryStore } from '../store/MemoryStore.js';
 import {
+  MemoryCandidate,
   MemoryImportance,
+  MemoryMetadata,
   MemoryQuery,
   MemoryRecord,
   MemoryResult,
@@ -20,7 +22,7 @@ export interface CreateMemoryParams {
   expiresAt?: number;
   tags?: string[];
   source?: MemorySource;
-  metadata?: Record<string, unknown>;
+  metadata?: MemoryMetadata;
 }
 
 export class MemoryService {
@@ -86,6 +88,33 @@ export class MemoryService {
 
     await this.store.save(record);
     return record;
+  }
+
+  public async processCandidates(
+    contactId: string,
+    candidates: MemoryCandidate[]
+  ): Promise<MemoryRecord[]> {
+    const savedRecords: MemoryRecord[] = [];
+    for (const candidate of candidates) {
+      try {
+        const record = await this.createMemory({
+          contactId,
+          type: candidate.type,
+          title: candidate.title,
+          content: candidate.content,
+          importance: candidate.importance,
+          confidence: candidate.confidence,
+          expiresAt: candidate.expiresAt,
+          tags: candidate.tags,
+          source: candidate.source,
+          metadata: candidate.metadata || {},
+        });
+        savedRecords.push(record);
+      } catch {
+        // Skip invalid/uncertain candidates gracefully
+      }
+    }
+    return savedRecords;
   }
 
   public async updateMemory(id: string, patch: Partial<MemoryRecord>): Promise<MemoryRecord | null> {

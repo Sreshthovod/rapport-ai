@@ -21,6 +21,19 @@ export interface MemoryMetadata {
   customProperties?: Record<string, unknown>;
 }
 
+export interface MemoryCandidate {
+  type: MemoryType;
+  title: string;
+  content: string;
+  importance: MemoryImportance;
+  confidence: number;
+  reason: string;
+  tags: string[];
+  source: MemorySource;
+  expiresAt?: number;
+  metadata?: MemoryMetadata;
+}
+
 export interface MemoryRecord {
   id: string;
   contactId: string;
