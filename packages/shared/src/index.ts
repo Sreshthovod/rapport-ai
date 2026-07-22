@@ -5,4 +5,5 @@ export * from './types/goal.js';
 export * from './types/settings.js';
 export * from './types/ai.js';
 export * from './types/context.js';
+export * from './types/intelligence.js';
 export * from './context/index.js';

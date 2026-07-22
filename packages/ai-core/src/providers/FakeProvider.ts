@@ -29,13 +29,14 @@ export class FakeProvider implements AIProvider {
       const detectedTone = structured?.tone || 'Friendly';
       const stage = structured?.stage || 'Small Talk';
 
-      // 1. Build standardized ProviderPromptRequest object
+      // 1. Build standardized ProviderPromptRequest object enriched with Intelligence
       const promptRequest: ProviderPromptRequest = {
         conversationSummary: structured?.summary.recentSummary || 'Recent conversation thread.',
         latestMessages: structured?.recentMessages.map((m) => `${m.sender}: ${m.text}`) || [],
         detectedTone,
-        objective: structured?.summary.suggestedGoal || 'Friendly Engagement',
+        objective: structured?.intelligence?.suggestedGoal || structured?.summary.suggestedGoal || 'Friendly Engagement',
         maxSuggestions: 4,
+        intelligence: structured?.intelligence,
       };
 
       // 2. Generate multi-tone suggestions deterministically

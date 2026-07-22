@@ -1,3 +1,5 @@
+import { ConversationIntelligence } from './intelligence.js';
+
 export type ToneType =
   | 'Friendly'
   | 'Professional'
@@ -84,4 +86,5 @@ export interface StructuredAIContext {
   recentMessages: CanonicalMessage[];
   extractedFacts: ExtractedFact[];
   pendingQuestions: string[];
+  intelligence?: ConversationIntelligence;
 }
