@@ -21,3 +21,11 @@ export function buildContextPayload(input: BasePromptPayload): BasePromptPayload
     recentThreadSnippet: input.recentThreadSnippet || '',
   };
 }
+
+export { ContextEngine } from './ContextEngine.js';
+export { MessageNormalizer } from './Normalizer.js';
+export { ConversationModelBuilder } from './ConversationModelBuilder.js';
+export { HeuristicToneDetector } from './ToneDetector.js';
+export { ConversationStageAnalyzer } from './StageAnalyzer.js';
+export { ImportantFactExtractor } from './FactExtractor.js';
+export { ContextSummaryGenerator } from './SummaryGenerator.js';

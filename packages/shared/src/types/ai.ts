@@ -1,4 +1,5 @@
 import { ConversationContext } from './conversation.js';
+import { StructuredAIContext } from './context.js';
 
 export const RAPPORT_AI_GENERATE_REPLY = 'RAPPORT_AI_GENERATE_REPLY';
 
@@ -11,6 +12,7 @@ export interface ProviderCapabilities {
 
 export interface AIRequest {
   conversation: ConversationContext;
+  structuredContext?: StructuredAIContext;
   prompt?: string;
   providerId?: string;
   options?: Record<string, unknown>;

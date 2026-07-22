@@ -1,4 +1,5 @@
 import { AIRequest, ProviderResult } from '@rapport/shared';
+import { ContextEngine } from '../context/ContextEngine.js';
 import { ProviderRegistry } from '../providers/ProviderRegistry.js';
 
 export class AIService {
@@ -17,8 +18,15 @@ export class AIService {
         };
       }
 
+      // Execute ContextEngine pipeline to build structured context
+      const structuredContext = request.structuredContext || ContextEngine.processContext(request.conversation);
+      const enrichedRequest: AIRequest = {
+        ...request,
+        structuredContext,
+      };
+
       const provider = this.registry.getProvider(request.providerId);
-      const result = await provider.generateReply(request);
+      const result = await provider.generateReply(enrichedRequest);
       return result;
     } catch (err) {
       return {

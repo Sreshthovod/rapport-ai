@@ -17,17 +17,19 @@ export class FakeProvider implements AIProvider {
       // Simulate realistic async processing delay (600ms)
       await new Promise((resolve) => setTimeout(resolve, 600));
 
-      const context = request.conversation;
-      const contactName = context?.contact?.contactName || 'there';
-      const lastMsg = context?.lastIncomingMessage?.text || '';
+      const structured = request.structuredContext;
+      const contactName = request.conversation?.contact?.contactName || 'there';
+      const lastMsg = structured?.conversation.latestMessage?.text || request.conversation?.lastIncomingMessage?.text || '';
+      const detectedTone = structured?.tone || 'Friendly';
+      const stage = structured?.stage || 'Small Talk';
 
       let suggestedReply = 'Sounds good! Looking forward to it.';
-      let reasoning = 'Friendly and positive response to maintain positive rapport.';
-      let tone = 'Casual';
+      let reasoning = `Detected tone [${detectedTone}] and stage [${stage}]. Maintaining positive rapport.`;
+      let tone = detectedTone;
 
-      if (lastMsg.toLowerCase().includes('when') || lastMsg.toLowerCase().includes('time')) {
+      if (lastMsg.toLowerCase().includes('when') || lastMsg.toLowerCase().includes('time') || stage === 'Planning') {
         suggestedReply = `I'll check my schedule and get back to you shortly, ${contactName}.`;
-        reasoning = 'Clear, professional acknowledgment requesting brief alignment time.';
+        reasoning = `Inferred stage [${stage}]. Clear, professional acknowledgment requesting alignment time.`;
         tone = 'Professional';
       } else if (lastMsg.toLowerCase().includes('thanks') || lastMsg.toLowerCase().includes('thank you')) {
         suggestedReply = 'Anytime! Happy to help out.';
