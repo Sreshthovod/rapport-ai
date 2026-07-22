@@ -14,8 +14,8 @@ export interface BudgetedMemoryOutput {
 }
 
 export class MemoryPromptBudget {
-  public static readonly DEFAULT_MAX_MEMORIES = 5;
-  public static readonly DEFAULT_MAX_CHAR_LENGTH = 600;
+  public static readonly DEFAULT_MAX_MEMORIES = 6;
+  public static readonly DEFAULT_MAX_CHAR_LENGTH = 800;
 
   public static budgetMemories(
     memoryContext: MemoryContext | undefined,
@@ -31,15 +31,19 @@ export class MemoryPromptBudget {
       };
     }
 
-    const maxMemories = options?.maxMemories || MemoryPromptBudget.DEFAULT_MAX_MEMORIES;
-    const maxCharLength = options?.maxCharLength || MemoryPromptBudget.DEFAULT_MAX_CHAR_LENGTH;
+    const maxMemories = options?.maxMemories ?? MemoryPromptBudget.DEFAULT_MAX_MEMORIES;
+    const maxCharLength = options?.maxCharLength ?? MemoryPromptBudget.DEFAULT_MAX_CHAR_LENGTH;
 
     const allRecords = [...memoryContext.relevantMemories];
     const charCountBefore = allRecords.reduce((sum, r) => sum + r.content.length, 0);
 
-    // Sort memories by importance score
-    const importanceWeight = { CRITICAL: 4, HIGH: 3, NORMAL: 2, LOW: 1 };
-    allRecords.sort((a, b) => (importanceWeight[b.importance] || 2) - (importanceWeight[a.importance] || 2));
+    // Sort by importance then recency
+    const importanceWeight: Record<string, number> = { CRITICAL: 4, HIGH: 3, NORMAL: 2, LOW: 1 };
+    allRecords.sort((a, b) => {
+      const importanceDiff = (importanceWeight[b.importance] ?? 2) - (importanceWeight[a.importance] ?? 2);
+      if (importanceDiff !== 0) return importanceDiff;
+      return b.updatedAt - a.updatedAt;
+    });
 
     const selectedMemories: MemoryRecord[] = [];
     const discardedMemories: MemoryRecord[] = [];
@@ -47,7 +51,7 @@ export class MemoryPromptBudget {
     let currentLength = 0;
 
     for (const record of allRecords) {
-      const lineText = `- [${record.importance} ${record.type}] ${record.title}: ${record.content}`;
+      const lineText = MemoryPromptBudget.formatMemoryLine(record);
 
       if (selectedMemories.length < maxMemories && currentLength + lineText.length <= maxCharLength) {
         selectedMemories.push(record);
@@ -67,14 +71,34 @@ export class MemoryPromptBudget {
       };
     }
 
-    const memoryLines = selectedMemories.map(
-      (r) => `- [${r.importance} ${r.type}] ${r.title}: ${r.content}`
+    // Separate into categories for clearer prompt structure
+    const activePlans = selectedMemories.filter((r) => r.type === 'PLAN' || r.type === 'PROMISE');
+    const criticalFacts = selectedMemories.filter(
+      (r) => r.importance === 'CRITICAL' || r.importance === 'HIGH'
+    ).filter((r) => r.type !== 'PLAN' && r.type !== 'PROMISE');
+    const other = selectedMemories.filter(
+      (r) => !activePlans.includes(r) && !criticalFacts.includes(r)
     );
 
-    const promptSection = `
-=== RELEVANT INTERPERSONAL MEMORIES ===
-${memoryLines.join('\n')}
-`.trim();
+    const sections: string[] = [];
+
+    if (activePlans.length > 0) {
+      sections.push(
+        `ACTIVE PLANS & PROMISES:\n${activePlans.map((r) => MemoryPromptBudget.formatMemoryLine(r)).join('\n')}`
+      );
+    }
+    if (criticalFacts.length > 0) {
+      sections.push(
+        `IMPORTANT FACTS ABOUT THIS PERSON:\n${criticalFacts.map((r) => MemoryPromptBudget.formatMemoryLine(r)).join('\n')}`
+      );
+    }
+    if (other.length > 0) {
+      sections.push(
+        `ADDITIONAL CONTEXT:\n${other.map((r) => MemoryPromptBudget.formatMemoryLine(r)).join('\n')}`
+      );
+    }
+
+    const promptSection = `=== LONG-TERM MEMORY ===\n${sections.join('\n\n')}`;
 
     return {
       promptSection,
@@ -83,5 +107,9 @@ ${memoryLines.join('\n')}
       charCountBefore,
       charCountAfter: promptSection.length,
     };
+  }
+
+  private static formatMemoryLine(record: MemoryRecord): string {
+    return `- [${record.type}] ${record.title}: ${record.content}`;
   }
 }
