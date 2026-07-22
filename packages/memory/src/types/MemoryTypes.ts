@@ -66,3 +66,28 @@ export interface MemoryResult {
   offset: number;
   limit: number;
 }
+
+export interface MemoryRetrievalQuery {
+  contactId: string;
+  conversationId?: string;
+  currentTopic?: string;
+  recentKeywords?: string[];
+  conversationGoal?: string;
+  relationshipType?: string;
+  memoryTypes?: MemoryType[];
+  maximumResults?: number;
+}
+
+export interface MemoryContext {
+  relevantMemories: MemoryRecord[];
+  importantFacts: MemoryRecord[];
+  activePlans: MemoryRecord[];
+  recurringPreferences: MemoryRecord[];
+  recentEvents: MemoryRecord[];
+  retrievalMetadata: {
+    totalEvaluated: number;
+    totalReturned: number;
+    queryTimestamp: number;
+    executionTimeMs: number;
+  };
+}

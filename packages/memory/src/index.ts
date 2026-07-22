@@ -6,3 +6,8 @@ export { MemoryExtractor } from './extraction/MemoryExtractor.js';
 export { ExtractionRules } from './extraction/ExtractionRules.js';
 export { ImportanceScorer } from './extraction/ImportanceScorer.js';
 export * from './extraction/fixtures.js';
+export { MemoryRetriever } from './retrieval/MemoryRetriever.js';
+export { MemoryFilter } from './retrieval/MemoryFilter.js';
+export { MemoryRanker, type RankedMemory } from './retrieval/MemoryRanker.js';
+export { RetrievalCache } from './retrieval/RetrievalCache.js';
+export * from './retrieval/fixtures.js';
