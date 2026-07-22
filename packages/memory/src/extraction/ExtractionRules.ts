@@ -61,7 +61,7 @@ export class ExtractionRules {
       }
 
       // 3. Plans & Meetings (Temporary vs Permanent)
-      if (/(meet|schedule|lunch|dinner|coffee|party|flight|trip|weekend|tomorrow|friday|monday)/i.test(lower)) {
+      if (/(meet|schedule|lunch|dinner|coffee|party|flight|trip|vacation|planning|weekend|tomorrow|friday|monday)/i.test(lower)) {
         const isTemp = /(tomorrow|tonight|this weekend|this friday|next week)/i.test(lower);
         // Expiration: 7 days for temporary plans
         const expiresAt = isTemp ? Date.now() + 7 * 24 * 60 * 60 * 1000 : undefined;
@@ -73,7 +73,7 @@ export class ExtractionRules {
           importance: ImportanceScorer.calculateImportance({ type: 'PLAN', content: text, isTemporary: isTemp }),
           confidence: 0.91,
           reason: 'Detected scheduling or plan proposal.',
-          tags: ['plan', 'meeting'],
+          tags: ['plan', 'meeting', 'travel'],
           source: 'extracted_heuristic',
           expiresAt,
         });
@@ -94,7 +94,7 @@ export class ExtractionRules {
       }
 
       // 5. Locations & Travel
-      if (/(living in|moving to|traveling to|visiting|located in|based in)/i.test(lower)) {
+      if (/(living in|moving to|traveling to|vacation to|visiting|located in|based in)/i.test(lower)) {
         candidates.push({
           type: 'LOCATION',
           title: 'Location Reference',

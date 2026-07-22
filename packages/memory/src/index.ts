@@ -11,3 +11,4 @@ export { MemoryFilter } from './retrieval/MemoryFilter.js';
 export { MemoryRanker, type RankedMemory } from './retrieval/MemoryRanker.js';
 export { RetrievalCache } from './retrieval/RetrievalCache.js';
 export * from './retrieval/fixtures.js';
+export { PipelineValidationTest, type AuditResult } from './test/PipelineValidation.test.js';
