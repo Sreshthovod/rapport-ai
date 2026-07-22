@@ -7,6 +7,7 @@ export interface FloatingToolbarProps {
   onSettingsClick?: () => void;
   onAIClick?: () => void;
   pendingCommitmentText?: string;
+  onDragStart?: (e: React.PointerEvent) => void;
 }
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
@@ -14,6 +15,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onSettingsClick,
   onAIClick,
   pendingCommitmentText,
+  onDragStart,
 }) => {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const shortcutHint = isMac ? '⌘K' : 'Ctrl+K';
@@ -35,8 +37,14 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         backdropFilter: 'blur(8px)',
       }}
     >
-      {/* Brand Badge */}
+      {/* Brand Badge / Drag Handle */}
       <div
+        onPointerDown={(e) => {
+          if (e.button === 0 && onDragStart) {
+            onDragStart(e);
+          }
+        }}
+        title="Drag overlay"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -46,6 +54,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           color: 'var(--rapport-accent)',
           fontWeight: 600,
           fontSize: '12px',
+          cursor: 'grab',
+          touchAction: 'none',
+          userSelect: 'none',
         }}
       >
         <LogoIcon size={18} />

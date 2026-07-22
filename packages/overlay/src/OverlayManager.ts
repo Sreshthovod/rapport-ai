@@ -19,6 +19,12 @@ export class OverlayManager {
   private targetElement: HTMLElement | null = null;
   private pendingCommitmentText?: string;
 
+  // Dragging State
+  private isDragging: boolean = false;
+  private dragStartPos: { x: number; y: number } = { x: 0, y: 0 };
+  private customPosition: { top: number; left: number } | null = null;
+  private anchoredPosition: PositionCoordinates = { top: 0, left: 0, width: 0, visible: false };
+
   // AI Modal States
   private aiModalVisible: boolean = false;
   private aiModalLoading: boolean = false;
@@ -113,6 +119,58 @@ export class OverlayManager {
     this.render();
   }
 
+  private handleDragStart = (e: React.PointerEvent): void => {
+    if (!this.shadowHost) return;
+    const container = this.shadowHost.containerElement;
+
+    this.isDragging = true;
+    const currentTop = this.customPosition ? this.customPosition.top : this.anchoredPosition.top;
+    const currentLeft = this.customPosition ? this.customPosition.left : this.anchoredPosition.left;
+
+    this.dragStartPos = {
+      x: e.clientX - currentLeft,
+      y: e.clientY - currentTop,
+    };
+
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if capture fails
+    }
+
+    window.addEventListener('pointermove', this.handlePointerMove);
+    window.addEventListener('pointerup', this.handlePointerUp);
+    window.addEventListener('pointercancel', this.handlePointerUp);
+  };
+
+  private handlePointerMove = (e: PointerEvent): void => {
+    if (!this.isDragging || !this.shadowHost) return;
+
+    const newLeft = e.clientX - this.dragStartPos.x;
+    const newTop = e.clientY - this.dragStartPos.y;
+
+    const maxLeft = Math.max(10, window.innerWidth - 100);
+    const maxTop = Math.max(10, window.innerHeight - 50);
+
+    const clampedLeft = Math.max(10, Math.min(newLeft, maxLeft));
+    const clampedTop = Math.max(10, Math.min(newTop, maxTop));
+
+    this.customPosition = { top: clampedTop, left: clampedLeft };
+
+    const container = this.shadowHost.containerElement;
+    container.style.top = `${clampedTop}px`;
+    container.style.left = `${clampedLeft}px`;
+  };
+
+  private handlePointerUp = (): void => {
+    if (!this.isDragging) return;
+    this.isDragging = false;
+
+    window.removeEventListener('pointermove', this.handlePointerMove);
+    window.removeEventListener('pointerup', this.handlePointerUp);
+    window.removeEventListener('pointercancel', this.handlePointerUp);
+  };
+
   private updatePositioning(): void {
     if (this.stopPositionObserver) {
       this.stopPositionObserver();
@@ -125,11 +183,15 @@ export class OverlayManager {
       this.targetElement,
       (pos: PositionCoordinates) => {
         if (!this.shadowHost) return;
+        this.anchoredPosition = pos;
+
         const container = this.shadowHost.containerElement;
         if (pos.visible && this.isVisible) {
           container.style.display = 'block';
-          container.style.top = `${pos.top}px`;
-          container.style.left = `${pos.left}px`;
+          const top = this.customPosition ? this.customPosition.top : pos.top;
+          const left = this.customPosition ? this.customPosition.left : pos.left;
+          container.style.top = `${top}px`;
+          container.style.left = `${left}px`;
         } else {
           container.style.display = 'none';
         }
@@ -165,6 +227,7 @@ export class OverlayManager {
         React.createElement(FloatingToolbar, {
           visible: this.isVisible,
           pendingCommitmentText: this.pendingCommitmentText,
+          onDragStart: this.handleDragStart,
           onAIClick: () => {
             if (this.onAIClickCallback) {
               this.onAIClickCallback();
@@ -180,6 +243,11 @@ export class OverlayManager {
           data: this.aiModalData,
           error: this.aiModalError,
           onClose: () => this.closeAIModal(),
+          onRegenerate: () => {
+            if (this.onAIClickCallback) {
+              this.onAIClickCallback();
+            }
+          },
           onInsert: (text: string) => {
             if (this.onInsertDraftCallback) {
               this.onInsertDraftCallback(text);
@@ -193,6 +261,9 @@ export class OverlayManager {
 
   public dispose(): void {
     window.removeEventListener('keydown', this.handleKeyDown, true);
+    window.removeEventListener('pointermove', this.handlePointerMove);
+    window.removeEventListener('pointerup', this.handlePointerUp);
+    window.removeEventListener('pointercancel', this.handlePointerUp);
 
     if (this.stopPositionObserver) {
       this.stopPositionObserver();

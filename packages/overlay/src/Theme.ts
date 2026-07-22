@@ -6,7 +6,7 @@ export const THEME_VARIABLES = `
     --rapport-radius: 12px;
     --rapport-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
     --rapport-transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-    --rapport-z-index: 99999;
+    --rapport-z-index: 999999;
   }
 
   :host([data-theme="light"]) {

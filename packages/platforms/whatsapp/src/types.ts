@@ -31,6 +31,7 @@ export interface WhatsAppDOMValidationResult {
   messagesFound: boolean;
   title: string | null;
   messageCount: number;
+  connected: boolean;
 }
 
 export type ConversationChangeEventReason =

@@ -41,8 +41,7 @@ function initRapportContentScript(): void {
 
       const updateStatusBadge = () => {
         const domResult = adapter.validateWhatsAppDOM();
-        const isConnected = domResult.chatFound && domResult.inputFound;
-        injectOrUpdateStatusBadge(isConnected);
+        injectOrUpdateStatusBadge(domResult.connected === true);
       };
 
       const evaluateCommitments = (chatId: string) => {
@@ -190,8 +189,13 @@ function initRapportContentScript(): void {
         console.log(`[DraftObserver] Draft: "${draftText}"`);
       });
 
-      // Initial validation & status badge injection
-      updateStatusBadge();
+      // 4. Observer for DOM Connection Status
+      adapter.observeDOMStatus((result) => {
+        injectOrUpdateStatusBadge(result.connected === true);
+      });
+
+      // Initial validation & inspector output
+      adapter.inspectWhatsAppDOM();
     } catch (error) {
       console.error('[Rapport] Critical failure during Overlay/Context mounting:', error);
     }

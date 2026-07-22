@@ -8,6 +8,7 @@ export class ConversationObserver {
   private observer: MutationObserver | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastLatestMessageId: string | null = null;
+  private lastMessageCount: number = -1;
 
   constructor(
     private readonly callback: MessagesChangeCallback,
@@ -58,10 +59,12 @@ export class ConversationObserver {
     const messages = getVisibleMessages(20, this.logger);
     const latestMsg = messages[messages.length - 1];
     const latestId = latestMsg?.id || null;
+    const count = messages.length;
 
-    // Check if message count or latest message changed
-    if (latestId !== this.lastLatestMessageId || messages.length > 0) {
+    // Trigger callback only if message count or latest message changed
+    if (latestId !== this.lastLatestMessageId || count !== this.lastMessageCount) {
       this.lastLatestMessageId = latestId;
+      this.lastMessageCount = count;
       this.callback(messages);
     }
   }

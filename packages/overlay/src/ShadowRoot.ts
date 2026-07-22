@@ -12,7 +12,7 @@ export interface ShadowRootHost {
 
 export function createShadowHost(theme: ThemeMode = 'dark'): ShadowRootHost {
   const hostElement = document.createElement('rapport-overlay-host');
-  hostElement.style.cssText = 'position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 99999; pointer-events: none;';
+  hostElement.style.cssText = 'position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 999999; pointer-events: none; overflow: visible;';
 
   // Attach closed Shadow Root for 100% CSS isolation
   const shadowRoot = hostElement.attachShadow({ mode: 'closed' });
@@ -36,6 +36,7 @@ export function createShadowHost(theme: ThemeMode = 'dark'): ShadowRootHost {
       font-size: 13px;
       user-select: none;
       z-index: var(--rapport-z-index);
+      overflow: visible;
     }
   `;
 

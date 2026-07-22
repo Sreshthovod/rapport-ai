@@ -16,6 +16,7 @@ export const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       type="button"
       disabled={disabled}
       onClick={disabled ? undefined : onClick}
+      onPointerDown={(e) => e.stopPropagation()}
       aria-label={label}
       title={tooltipText || label}
       style={{
