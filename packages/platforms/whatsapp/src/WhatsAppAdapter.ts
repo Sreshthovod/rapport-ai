@@ -30,6 +30,7 @@ export class WhatsAppAdapter {
   private chatObserver: ChatObserver | null = null;
   private conversationObserver: ConversationObserver | null = null;
   private draftObserver: DraftObserver | null = null;
+  private reattachRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   private activeChatState: WhatsAppChat | null = null;
   private messagesState: WhatsAppVisibleMessage[] = [];
@@ -230,13 +231,19 @@ export class WhatsAppAdapter {
     }
 
     if ((!inputEl || !msgContainer) && attempt < 3) {
-      setTimeout(() => {
+      this.reattachRetryTimeoutId = setTimeout(() => {
+        this.reattachRetryTimeoutId = null;
         this.reattachSubObservers(attempt + 1);
       }, 100);
     }
   }
 
   public dispose(): void {
+    // Cancel any pending reattach retry to prevent post-dispose callbacks
+    if (this.reattachRetryTimeoutId !== null) {
+      clearTimeout(this.reattachRetryTimeoutId);
+      this.reattachRetryTimeoutId = null;
+    }
     if (this.draftObserver) {
       this.draftObserver.stop();
       this.draftObserver = null;

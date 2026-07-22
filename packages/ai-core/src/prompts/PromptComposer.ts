@@ -38,12 +38,25 @@ export class PromptComposer {
     const memoryContext = context.memoryContext as MemoryContext | undefined;
     const budgetedMemory = MemoryPromptBudget.budgetMemories(memoryContext);
 
-    // Dev-Mode Prompt Debugging
+    // Dev-Mode Prompt Debugging & Completeness Validation
     if (DEBUG_AI_PIPELINE) {
       if (budgetedMemory.selectedMemories.length > 0) {
-        console.debug('[PromptComposer Dev Debug] Selected Memories:', budgetedMemory.selectedMemories.map((m) => m.title));
-        console.debug('[PromptComposer Dev Debug] Discarded Memories:', budgetedMemory.discardedMemories.map((m) => m.title));
-        console.debug(`[PromptComposer Dev Debug] Memory Chars: ${budgetedMemory.charCountBefore} -> ${budgetedMemory.charCountAfter}`);
+        console.debug('[PromptComposer] Selected Memories:', budgetedMemory.selectedMemories.map((m) => m.title));
+        console.debug('[PromptComposer] Discarded Memories:', budgetedMemory.discardedMemories.map((m) => m.title));
+        console.debug(`[PromptComposer] Memory Chars: ${budgetedMemory.charCountBefore} -> ${budgetedMemory.charCountAfter}`);
+      }
+      // Prompt completeness warnings — each section should be populated for the best AI output
+      if (!context.intelligence) {
+        console.warn('[PromptComposer] ⚠️ Missing: ConversationIntelligence — context.intelligence is undefined.');
+      }
+      if (!context.relationship) {
+        console.warn('[PromptComposer] ⚠️ Missing: RelationshipContext — context.relationship is undefined.');
+      }
+      if (!context.memoryContext) {
+        console.warn('[PromptComposer] ⚠️ Missing: MemoryContext — context.memoryContext is undefined. Ensure processContextAsync() was used.');
+      }
+      if (!context.summary?.currentTopic) {
+        console.warn('[PromptComposer] ⚠️ Missing: currentTopic in context.summary — topic detection may have failed.');
       }
     }
 

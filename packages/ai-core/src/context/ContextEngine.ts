@@ -1,9 +1,11 @@
 import { MemoryRetriever } from '@rapport/memory';
 import {
+  AIPipelineInspector,
   ChatMessage,
   ConversationContext,
   StructuredAIContext,
 } from '@rapport/shared';
+import { DEBUG_AI_PIPELINE } from '../prompts/PromptComposer.js';
 import { ConversationIntelligenceEngine } from '../intelligence/ConversationIntelligenceEngine.js';
 import { RelationshipEngine } from '../relationship/RelationshipEngine.js';
 import { ConversationModelBuilder } from './ConversationModelBuilder.js';
@@ -74,21 +76,51 @@ export class ContextEngine {
   }
 
   public static async processContextAsync(rawContext: ConversationContext): Promise<StructuredAIContext> {
+    const inspector = AIPipelineInspector.getInstance();
+
+    // Run synchronous pipeline stages
+    const t0 = Date.now();
     const baseContext = ContextEngine.processContext(rawContext);
+
+    if (DEBUG_AI_PIPELINE) {
+      inspector.trace('ContextEngine:sync', {
+        tone: baseContext.tone,
+        stage: baseContext.stage,
+        messageCount: baseContext.recentMessages.length,
+        topic: baseContext.summary?.currentTopic,
+      }, Date.now() - t0);
+    }
+
     const contactId = rawContext?.contact?.id || 'unknown';
 
+    // Resilient async memory retrieval — failure never blocks the AI request
     try {
+      const t1 = Date.now();
       const memoryContext = await MemoryRetriever.getInstance().retrieveMemoryContext({
         contactId,
         currentTopic: baseContext.summary?.currentTopic,
         recentKeywords: baseContext.summary?.pendingQuestions || [],
       });
-      return {
-        ...baseContext,
-        memoryContext,
-      };
-    } catch {
-      // Resilient fallback: continue with base conversation context only if memory retrieval fails
+
+      if (DEBUG_AI_PIPELINE) {
+        inspector.trace('MemoryRetriever', {
+          totalEvaluated: memoryContext.retrievalMetadata.totalEvaluated,
+          totalReturned: memoryContext.retrievalMetadata.totalReturned,
+          relevantMemoryTitles: memoryContext.relevantMemories.map((m) => m.title),
+        }, Date.now() - t1);
+      }
+
+      // Warn in dev if no memories were found for a known contact
+      if (DEBUG_AI_PIPELINE && memoryContext.relevantMemories.length === 0 && contactId !== 'unknown') {
+        console.debug(`[ContextEngine] ⚠️ No memories retrieved for contact "${contactId}". Memory store may be empty.`);
+      }
+
+      return { ...baseContext, memoryContext };
+    } catch (err) {
+      // Resilient fallback: memory failure must never break the AI request
+      if (DEBUG_AI_PIPELINE) {
+        console.warn('[ContextEngine] Memory retrieval failed — continuing without memory context:', err);
+      }
       return baseContext;
     }
   }

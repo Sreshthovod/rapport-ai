@@ -10,6 +10,13 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
   private readonly inMemoryMap: Map<string, MemoryRecord> = new Map();
   private readonly storageKey = 'rapport_memories_v1';
 
+  /**
+   * Dirty flag: set to true whenever in-memory state is authoritative and
+   * does NOT require a reload from storage. Cleared after a persistence or load.
+   * When false, the next read will reload from chrome.storage / localStorage.
+   */
+  private dirty = false;
+
   public static getInstance(): BrowserStorageMemoryStore {
     if (!BrowserStorageMemoryStore.instance) {
       BrowserStorageMemoryStore.instance = new BrowserStorageMemoryStore();
@@ -18,7 +25,8 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
   }
 
   private async loadAll(): Promise<Map<string, MemoryRecord>> {
-    if (this.inMemoryMap.size > 0) {
+    // Use the in-memory cache only if it was populated by this process
+    if (this.dirty) {
       return this.inMemoryMap;
     }
 
@@ -28,18 +36,21 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
           chrome.storage.local.get([this.storageKey], (res: Record<string, unknown>) => resolve(res || {}));
         });
         const rawList = (result[this.storageKey] as MemoryRecord[]) || [];
+        this.inMemoryMap.clear();
         rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
       } else if (typeof localStorage !== 'undefined') {
         const raw = localStorage.getItem(this.storageKey);
+        this.inMemoryMap.clear();
         if (raw) {
           const rawList = JSON.parse(raw) as MemoryRecord[];
           rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
         }
       }
     } catch {
-      // Storage unavailable fallback
+      // Storage unavailable fallback — use whatever is in memory
     }
 
+    this.dirty = true;
     return this.inMemoryMap;
   }
 
@@ -128,6 +139,7 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
 
   public async clear(): Promise<void> {
     this.inMemoryMap.clear();
+    this.dirty = true;
     await this.persistAll();
   }
 
@@ -137,5 +149,13 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
       return Array.from(map.values()).filter((r) => r.contactId === contactId).length;
     }
     return map.size;
+  }
+
+  /**
+   * Invalidate the in-memory cache so the next read reloads from storage.
+   * Call this if you suspect external writes have occurred (e.g. sidepanel edits).
+   */
+  public invalidateCache(): void {
+    this.dirty = false;
   }
 }

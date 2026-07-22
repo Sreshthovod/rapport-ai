@@ -13,12 +13,12 @@ console.log('[Rapport] Content Script Loaded');
 function initRapportContentScript(): void {
   const hostname = window.location.hostname;
 
-  if (hostname.includes('web.whatsapp.com')) {
-    console.log('[Rapport] WhatsApp Detected');
-  } else if (!hostname.includes('app.slack.com')) {
-    console.warn(`[Rapport] Unhandled target hostname: ${hostname}`);
+  if (!hostname.includes('web.whatsapp.com')) {
+    console.warn(`[Rapport] Unsupported hostname: ${hostname}. Rapport AI only runs on web.whatsapp.com.`);
     return;
   }
+
+  console.log('[Rapport] WhatsApp Detected');
 
   const onDomReady = (callback: () => void) => {
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -38,6 +38,19 @@ function initRapportContentScript(): void {
 
       overlay.mount(document.body);
       console.log('[Rapport] Overlay Mounted');
+
+      // ----------------------------------------------------------------
+      // Dispose everything cleanly when page is unloaded
+      // ----------------------------------------------------------------
+      const handleUnload = () => {
+        stopChatObserver();
+        stopMessageObserver();
+        stopDraftObserver();
+        stopDOMObserver();
+        adapter.dispose();
+        overlay.dispose();
+      };
+      window.addEventListener('beforeunload', handleUnload, { once: true });
 
       const updateStatusBadge = () => {
         const domResult = adapter.validateWhatsAppDOM();
@@ -127,16 +140,37 @@ function initRapportContentScript(): void {
         }
 
         inputEl.focus();
-        const success = document.execCommand('insertText', false, textToInsert);
-        if (!success) {
+
+        // Try modern InputEvent first (replaces deprecated execCommand)
+        try {
+          const inputEvent = new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            data: textToInsert,
+            inputType: 'insertText',
+          });
+          inputEl.dispatchEvent(inputEvent);
+
+          // If the element supports execCommand (contenteditable), use it as a fallback
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          if (!document.execCommand('insertText', false, textToInsert)) {
+            inputEl.textContent = textToInsert;
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } catch {
           inputEl.textContent = textToInsert;
           inputEl.dispatchEvent(new Event('input', { bubbles: true }));
         }
+
         console.log('[Rapport:AI] Inserted AI reply into WhatsApp draft textbox.');
       });
 
-      // 1. Independent Chat Switch Observer
-      adapter.observeChat((chat) => {
+      // ----------------------------------------------------------------
+      // Observers — capture cleanup functions to prevent listener leaks
+      // ----------------------------------------------------------------
+
+      // 1. Chat Switch Observer
+      const stopChatObserver = adapter.observeChat((chat) => {
         updateStatusBadge();
 
         const inputElement = adapter.getInputElement();
@@ -163,8 +197,8 @@ function initRapportContentScript(): void {
         }
       });
 
-      // 2. Independent Message List Mutation Observer
-      adapter.observeMessages((messages) => {
+      // 2. Message List Mutation Observer
+      const stopMessageObserver = adapter.observeMessages((messages) => {
         updateStatusBadge();
 
         const chat = adapter.getCurrentChat();
@@ -184,13 +218,13 @@ function initRapportContentScript(): void {
         }
       });
 
-      // 3. Independent Draft Typing Observer
-      adapter.observeDraft((draftText) => {
+      // 3. Draft Typing Observer
+      const stopDraftObserver = adapter.observeDraft((draftText) => {
         console.log(`[DraftObserver] Draft: "${draftText}"`);
       });
 
-      // 4. Observer for DOM Connection Status
-      adapter.observeDOMStatus((result) => {
+      // 4. DOM Connection Status Observer
+      const stopDOMObserver = adapter.observeDOMStatus((result) => {
         injectOrUpdateStatusBadge(result.connected === true);
       });
 

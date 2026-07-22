@@ -9,6 +9,8 @@ export interface AIModalProps {
   onInsert?: (text: string) => void;
   onRegenerate?: () => void;
   onClose: () => void;
+  /** Dynamic copilot recommendation tip from CopilotEngine. Omit to hide the chip. */
+  copilotTip?: string;
 }
 
 const getToneColor = (tone: string): { bg: string; border: string; text: string } => {
@@ -33,6 +35,7 @@ export const AIModal: React.FC<AIModalProps> = ({
   onInsert,
   onRegenerate,
   onClose,
+  copilotTip,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -154,29 +157,31 @@ export const AIModal: React.FC<AIModalProps> = ({
         </div>
       </div>
 
-      {/* Proactive Copilot Recommendation Tip */}
-      <div
-        style={{
-          background: 'rgba(0, 168, 132, 0.1)',
-          border: '1px solid rgba(0, 168, 132, 0.25)',
-          borderRadius: '6px',
-          padding: '6px 10px',
-          marginBottom: '10px',
-          fontSize: '11px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
-          <span>💡</span>
-          <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Copilot Tip:</span>
-          <span style={{ color: 'var(--rapport-text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-            Confirm pending plans & schedule alignment
-          </span>
+      {/* Proactive Copilot Recommendation Tip — only rendered when a live tip is available */}
+      {copilotTip && (
+        <div
+          style={{
+            background: 'rgba(0, 168, 132, 0.1)',
+            border: '1px solid rgba(0, 168, 132, 0.25)',
+            borderRadius: '6px',
+            padding: '6px 10px',
+            marginBottom: '10px',
+            fontSize: '11px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+            <span>💡</span>
+            <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Copilot Tip:</span>
+            <span style={{ color: 'var(--rapport-text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+              {copilotTip}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Scrollable Body List */}
       <div

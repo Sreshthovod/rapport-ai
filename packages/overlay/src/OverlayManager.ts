@@ -30,6 +30,7 @@ export class OverlayManager {
   private aiModalLoading: boolean = false;
   private aiModalData: FakeAIResponse | null = null;
   private aiModalError: string | null = null;
+  private aiModalCopilotTip: string | undefined = undefined;
 
   private onAIClickCallback?: () => void;
   private onInsertDraftCallback?: (text: string) => void;
@@ -69,6 +70,14 @@ export class OverlayManager {
 
   public onInsertDraft(callback: (text: string) => void): void {
     this.onInsertDraftCallback = callback;
+  }
+
+  /** Set a live copilot tip to display inside the AI modal. Pass undefined to hide the chip. */
+  public setCopilotTip(tip: string | undefined): void {
+    this.aiModalCopilotTip = tip;
+    if (this.aiModalVisible) {
+      this.render();
+    }
   }
 
   public showAILoading(): void {
@@ -242,6 +251,7 @@ export class OverlayManager {
           loading: this.aiModalLoading,
           data: this.aiModalData,
           error: this.aiModalError,
+          copilotTip: this.aiModalCopilotTip,
           onClose: () => this.closeAIModal(),
           onRegenerate: () => {
             if (this.onAIClickCallback) {
