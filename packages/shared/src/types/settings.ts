@@ -1,76 +1,137 @@
 export type LLMProviderId = 'openai' | 'claude' | 'gemini' | 'fake-provider';
 
+export type ThemePreference = 'light' | 'dark' | 'system';
+
+export type OverlayPosition = 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left';
+
+export type ConversationStyle = 'balanced' | 'concise' | 'expressive';
+
 export interface ProviderKeyStatus {
   hasKey: boolean;
   isValidated: boolean;
   lastChecked?: number;
 }
 
+export interface MemoryStatistics {
+  totalMemories: number;
+  totalContacts: number;
+  storageSizeBytes: number;
+  oldestMemoryDate?: number;
+  newestMemoryDate?: number;
+}
+
 export interface RapportSettings {
-  // 1. AI Provider
+  // ── General ────────────────────────────────────────────────────────────────
+  language: string;
+  defaultConversationStyle: ConversationStyle;
+  suggestionCount: number;
+  autoGenerate: boolean;
+
+  // ── AI ─────────────────────────────────────────────────────────────────────
   activeProviderId: LLMProviderId;
   fallbackProviderId: LLMProviderId;
-
-  // 2. Models
   openaiModel: string;
   claudeModel: string;
   geminiModel: string;
   temperature: number;
   maxTokens: number;
-
-  // 3. Generation
   defaultTone: string;
-  defaultLength: 'concise' | 'balanced' | 'detailed';
-  suggestionCount: number;
-  autoGenerate: boolean;
+  streamingEnabled: boolean;
 
-  // 4. Memory
+  // ── Memory ─────────────────────────────────────────────────────────────────
   enableMemory: boolean;
   maxMemoriesInBudget: number;
   autoExtractMemories: boolean;
+  rememberPreferences: boolean;
+  rememberPlans: boolean;
+  rememberDates: boolean;
+  rememberInterests: boolean;
 
-  // 5. Privacy
+  // ── Privacy ────────────────────────────────────────────────────────────────
   localOnlyMode: boolean;
   telemetryEnabled: boolean;
   maskContactNames: boolean;
+  disabledChatIds: string[];
+  memoryDisabledChatIds: string[];
 
-  // 6. Advanced
+  // ── Appearance ─────────────────────────────────────────────────────────────
+  theme: ThemePreference;
+  compactMode: boolean;
+  animationsEnabled: boolean;
+  overlayPosition: OverlayPosition;
+
+  // ── Advanced ───────────────────────────────────────────────────────────────
   requestTimeoutMs: number;
   maxRetries: number;
+  enableProviderFallback: boolean;
+  promptContextBudget: number;
+  cacheDurationMs: number;
   rawPromptInspect: boolean;
 
-  // 7. Developer
+  // ── Developer ──────────────────────────────────────────────────────────────
   inspectorMode: boolean;
   debugLogs: boolean;
+  showFinalPrompt: boolean;
+  showRetrievedMemories: boolean;
+  showProviderLogs: boolean;
+  showRequestTiming: boolean;
+  showTokenUsage: boolean;
 }
 
 export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
+  // General
+  language: 'en',
+  defaultConversationStyle: 'balanced',
+  suggestionCount: 4,
+  autoGenerate: true,
+
+  // AI
   activeProviderId: 'fake-provider',
   fallbackProviderId: 'fake-provider',
-
   openaiModel: 'gpt-4o-mini',
   claudeModel: 'claude-3-5-haiku-20241022',
   geminiModel: 'gemini-2.5-flash',
   temperature: 0.7,
   maxTokens: 500,
-
   defaultTone: 'Friendly',
-  defaultLength: 'balanced',
-  suggestionCount: 4,
-  autoGenerate: true,
+  streamingEnabled: true,
 
+  // Memory
   enableMemory: true,
   maxMemoriesInBudget: 6,
   autoExtractMemories: true,
+  rememberPreferences: true,
+  rememberPlans: true,
+  rememberDates: true,
+  rememberInterests: true,
 
+  // Privacy
   localOnlyMode: false,
   telemetryEnabled: true,
   maskContactNames: false,
+  disabledChatIds: [],
+  memoryDisabledChatIds: [],
 
+  // Appearance
+  theme: 'dark',
+  compactMode: false,
+  animationsEnabled: true,
+  overlayPosition: 'bottom-right',
+
+  // Advanced
   requestTimeoutMs: 15000,
   maxRetries: 2,
+  enableProviderFallback: true,
+  promptContextBudget: 4000,
+  cacheDurationMs: 300000,
   rawPromptInspect: false,
 
+  // Developer
   inspectorMode: false,
   debugLogs: false,
+  showFinalPrompt: false,
+  showRetrievedMemories: false,
+  showProviderLogs: false,
+  showRequestTiming: false,
+  showTokenUsage: false,
 };

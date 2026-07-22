@@ -4,8 +4,8 @@ import { SettingsView } from '@rapport/overlay';
 
 export const SidepanelApp: React.FC = () => {
   return (
-    <div style={{ padding: '12px', background: '#14171a', minHeight: '100vh', boxSizing: 'border-box' }}>
-      <SettingsView />
+    <div style={{ padding: '12px', background: '#0f1114', minHeight: '100vh', boxSizing: 'border-box' }}>
+      <SettingsView mode="sidepanel" />
     </div>
   );
 };
