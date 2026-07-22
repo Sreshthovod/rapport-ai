@@ -4,6 +4,7 @@ import {
   StructuredAIContext,
 } from '@rapport/shared';
 import { ConversationIntelligenceEngine } from '../intelligence/ConversationIntelligenceEngine.js';
+import { RelationshipEngine } from '../relationship/RelationshipEngine.js';
 import { ConversationModelBuilder } from './ConversationModelBuilder.js';
 import { ImportantFactExtractor } from './FactExtractor.js';
 import { MessageNormalizer } from './Normalizer.js';
@@ -16,6 +17,7 @@ export class ContextEngine {
     const rawMessages: ChatMessage[] = rawContext?.recentMessages || [];
     const draftText: string = rawContext?.draft || '';
     const contactId: string = rawContext?.contact?.id || 'unknown';
+    const contactName: string = rawContext?.contact?.contactName || 'Contact';
 
     // 1. Normalization
     const recentMessages = MessageNormalizer.normalizeMessages(rawMessages);
@@ -50,6 +52,13 @@ export class ContextEngine {
       draftText,
     });
 
+    // 8. Relationship Context Engine Evaluation
+    const relationship = RelationshipEngine.getInstance().getRelationshipContextSync({
+      contactId,
+      contactName,
+      messages: recentMessages,
+    });
+
     return {
       conversation,
       summary,
@@ -59,6 +68,7 @@ export class ContextEngine {
       extractedFacts,
       pendingQuestions,
       intelligence,
+      relationship,
     };
   }
 }

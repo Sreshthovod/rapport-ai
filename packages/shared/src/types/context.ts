@@ -1,4 +1,5 @@
 import { ConversationIntelligence } from './intelligence.js';
+import { RelationshipContext } from './relationship.js';
 
 export type ToneType =
   | 'Friendly'
@@ -87,4 +88,5 @@ export interface StructuredAIContext {
   extractedFacts: ExtractedFact[];
   pendingQuestions: string[];
   intelligence?: ConversationIntelligence;
+  relationship?: RelationshipContext;
 }

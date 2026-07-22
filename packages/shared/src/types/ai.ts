@@ -1,6 +1,7 @@
 import { ConversationContext } from './conversation.js';
 import { StructuredAIContext } from './context.js';
 import { ConversationIntelligence } from './intelligence.js';
+import { RelationshipContext } from './relationship.js';
 
 export const RAPPORT_AI_GENERATE_REPLY = 'RAPPORT_AI_GENERATE_REPLY';
 
@@ -19,6 +20,7 @@ export interface ProviderPromptRequest {
   requestedReplyStyle?: string;
   maxSuggestions?: number;
   intelligence?: ConversationIntelligence;
+  relationship?: RelationshipContext;
 }
 
 export interface AISuggestion {
