@@ -1,33 +1,20 @@
 import { ConversationContext, FakeAIResponse } from '@rapport/shared';
+import { AIService } from './AIService.js';
 
 export class FakeAIService {
+  private static service = new AIService();
+
   public static async generateReply(
     context: ConversationContext
   ): Promise<FakeAIResponse> {
-    // Simulate realistic async pipeline execution delay (600ms)
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    const contactName = context.contact?.contactName || 'there';
-    const lastMsg = context.lastIncomingMessage?.text || '';
-
-    let suggestedReply = 'Sounds good! Looking forward to it.';
-    let reasoning = 'Friendly and positive response to maintain positive rapport.';
-    let tone = 'Casual';
-
-    if (lastMsg.toLowerCase().includes('when') || lastMsg.toLowerCase().includes('time')) {
-      suggestedReply = `I'll check my schedule and get back to you shortly, ${contactName}.`;
-      reasoning = 'Clear, professional acknowledgment requesting brief alignment time.';
-      tone = 'Professional';
-    } else if (lastMsg.toLowerCase().includes('thanks') || lastMsg.toLowerCase().includes('thank you')) {
-      suggestedReply = 'Anytime! Happy to help out.';
-      reasoning = 'Warm, supportive closing gesture.';
-      tone = 'Empathetic';
+    const result = await FakeAIService.service.generateReply({ conversation: context });
+    if (result.success && result.data) {
+      return {
+        suggestedReply: result.data.suggestedReply,
+        reasoning: result.data.reasoning,
+        tone: result.data.tone,
+      };
     }
-
-    return {
-      suggestedReply,
-      reasoning,
-      tone,
-    };
+    throw new Error(result.error || 'Failed to generate AI response.');
   }
 }
