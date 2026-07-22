@@ -2,6 +2,7 @@ import { ConversationContext } from './conversation.js';
 import { StructuredAIContext } from './context.js';
 import { ConversationIntelligence } from './intelligence.js';
 import { RelationshipContext } from './relationship.js';
+import { CompiledPromptSpec } from './prompt.js';
 
 export const RAPPORT_AI_GENERATE_REPLY = 'RAPPORT_AI_GENERATE_REPLY';
 
@@ -21,6 +22,7 @@ export interface ProviderPromptRequest {
   maxSuggestions?: number;
   intelligence?: ConversationIntelligence;
   relationship?: RelationshipContext;
+  compiledPrompt?: CompiledPromptSpec;
 }
 
 export interface AISuggestion {
@@ -42,6 +44,7 @@ export interface MultiAISuggestionResponse {
 export interface AIRequest {
   conversation: ConversationContext;
   structuredContext?: StructuredAIContext;
+  compiledPrompt?: CompiledPromptSpec;
   prompt?: string;
   providerId?: string;
   options?: Record<string, unknown>;

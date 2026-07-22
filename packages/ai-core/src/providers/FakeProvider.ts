@@ -5,6 +5,7 @@ import {
   ProviderPromptRequest,
   ProviderResult,
 } from '@rapport/shared';
+import { ResponseEvaluator } from '../prompts/ResponseEvaluator.js';
 import { AIProvider } from './AIProvider.js';
 
 export class FakeProvider implements AIProvider {
@@ -24,12 +25,13 @@ export class FakeProvider implements AIProvider {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       const structured = request.structuredContext;
+      const compiledPrompt = request.compiledPrompt;
       const contactName = request.conversation?.contact?.contactName || 'there';
       const lastMsg = structured?.conversation.latestMessage?.text || request.conversation?.lastIncomingMessage?.text || '';
       const detectedTone = structured?.tone || 'Friendly';
       const stage = structured?.stage || 'Small Talk';
 
-      // 1. Build standardized ProviderPromptRequest object enriched with Intelligence & Relationship Context
+      // 1. Build standardized ProviderPromptRequest object enriched with PromptSpec
       const promptRequest: ProviderPromptRequest = {
         conversationSummary: structured?.summary.recentSummary || 'Recent conversation thread.',
         latestMessages: structured?.recentMessages.map((m) => `${m.sender}: ${m.text}`) || [],
@@ -38,9 +40,10 @@ export class FakeProvider implements AIProvider {
         maxSuggestions: 4,
         intelligence: structured?.intelligence,
         relationship: structured?.relationship,
+        compiledPrompt,
       };
 
-      // 2. Generate multi-tone suggestions deterministically
+      // 2. Generate multi-tone suggestions deterministically (Safe, Balanced, Creative, Short)
       const suggestions: AISuggestion[] = [];
 
       if (lastMsg.toLowerCase().includes('when') || lastMsg.toLowerCase().includes('time') || stage === 'Planning') {
@@ -48,7 +51,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_1',
             tone: 'Friendly',
-            style: 'Casual & Warm',
+            style: 'Safe & Warm',
             text: `Hey ${contactName}! Let me check my calendar real quick and get back to you in a bit.`,
             explanation: 'Warm acknowledgment promising a prompt follow-up.',
             confidence: 0.92,
@@ -56,7 +59,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_2',
             tone: 'Professional',
-            style: 'Formal & Direct',
+            style: 'Balanced & Direct',
             text: `I'll review my schedule and confirm our alignment time shortly, ${contactName}.`,
             explanation: 'Professional confirmation requesting brief review time.',
             confidence: 0.95,
@@ -64,7 +67,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_3',
             tone: 'Funny',
-            style: 'Humorous',
+            style: 'Creative & Humorous',
             text: `Consulting my crystal ball (and calendar) right now! Back in 5 mins. 🔮`,
             explanation: 'Lighthearted response to keep the mood playful.',
             confidence: 0.88,
@@ -83,7 +86,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_1',
             tone: 'Friendly',
-            style: 'Casual & Warm',
+            style: 'Safe & Warm',
             text: `Anytime ${contactName}! Always happy to help out. 😊`,
             explanation: 'Warm, supportive closing gesture.',
             confidence: 0.95,
@@ -91,7 +94,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_2',
             tone: 'Professional',
-            style: 'Formal & Direct',
+            style: 'Balanced & Direct',
             text: 'You are very welcome. Please let me know if you need anything else.',
             explanation: 'Polite professional courtesy.',
             confidence: 0.94,
@@ -99,7 +102,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_3',
             tone: 'Funny',
-            style: 'Humorous',
+            style: 'Creative & Humorous',
             text: 'Don\'t mention it! Coffee is on you next time though ☕😄',
             explanation: 'Playful joke expressing willingness to help.',
             confidence: 0.86,
@@ -118,7 +121,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_1',
             tone: 'Friendly',
-            style: 'Casual & Warm',
+            style: 'Safe & Warm',
             text: `Sounds great, ${contactName}! Looking forward to it. 😊`,
             explanation: 'Friendly positive reinforcement.',
             confidence: 0.93,
@@ -126,7 +129,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_2',
             tone: 'Professional',
-            style: 'Formal & Direct',
+            style: 'Balanced & Direct',
             text: 'That sounds completely aligned. I will keep you posted on progress.',
             explanation: 'Clear professional commitment.',
             confidence: 0.91,
@@ -134,7 +137,7 @@ export class FakeProvider implements AIProvider {
           {
             id: 'sug_3',
             tone: 'Funny',
-            style: 'Humorous',
+            style: 'Creative & Humorous',
             text: '100%! As long as there are snacks involved, count me in! 🍕',
             explanation: 'Humorous engagement.',
             confidence: 0.85,
@@ -150,7 +153,15 @@ export class FakeProvider implements AIProvider {
         );
       }
 
+      // Evaluate primary suggestion with ResponseEvaluator if compiledPrompt is available
       const primarySuggestion = suggestions[0];
+      let evaluation = null;
+      if (compiledPrompt) {
+        evaluation = ResponseEvaluator.evaluateResponse({
+          responseText: primarySuggestion.text,
+          promptSpec: compiledPrompt,
+        });
+      }
 
       return {
         success: true,
@@ -162,6 +173,7 @@ export class FakeProvider implements AIProvider {
           suggestions,
           metadata: {
             promptRequest,
+            evaluation,
           },
         },
       };

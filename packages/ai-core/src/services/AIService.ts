@@ -1,5 +1,6 @@
 import { AIRequest, ProviderResult } from '@rapport/shared';
 import { ContextEngine } from '../context/ContextEngine.js';
+import { PromptComposer } from '../prompts/PromptComposer.js';
 import { ProviderRegistry } from '../providers/ProviderRegistry.js';
 
 export class AIService {
@@ -18,11 +19,18 @@ export class AIService {
         };
       }
 
-      // Execute ContextEngine pipeline to build structured context
+      // 1. Execute ContextEngine pipeline to build structured context
       const structuredContext = request.structuredContext || ContextEngine.processContext(request.conversation);
+
+      // 2. Compose compiled prompt spec via PromptComposer
+      const compiledPrompt = request.compiledPrompt || PromptComposer.compose({
+        context: structuredContext,
+      });
+
       const enrichedRequest: AIRequest = {
         ...request,
         structuredContext,
+        compiledPrompt,
       };
 
       const provider = this.registry.getProvider(request.providerId);

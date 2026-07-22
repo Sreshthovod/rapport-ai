@@ -7,4 +7,5 @@ export * from './types/ai.js';
 export * from './types/context.js';
 export * from './types/intelligence.js';
 export * from './types/relationship.js';
+export * from './types/prompt.js';
 export * from './context/index.js';
