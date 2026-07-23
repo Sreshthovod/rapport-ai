@@ -58,6 +58,25 @@ export class ConversationIntelligenceEngine {
       emotion: primaryEmotion,
     });
 
+    const previousTopic = IntelligenceV2Analyzer.analyzePreviousTopic(messages, analysis.topic);
+    const conversationGoal = IntelligenceV2Analyzer.analyzeGoal(analysis.topic, stage);
+    const sentiment = IntelligenceV2Analyzer.analyzeSentiment(messages);
+    const energyLevel = IntelligenceV2Analyzer.analyzeEnergyLevel(messages);
+    const dominantParticipant = IntelligenceV2Analyzer.analyzeDominantParticipant(messages);
+    const speakingBalance = IntelligenceV2Analyzer.analyzeSpeakingBalance(messages);
+    const conversationHealthScore = IntelligenceV2Analyzer.analyzeConversationHealthScore(messages, health, sentiment);
+    const emotions = IntelligenceV2Analyzer.analyzeDetailedEmotions(messages);
+    const timelineEvents = IntelligenceV2Analyzer.analyzeTimelineEvents(messages);
+
+    const replyStrategy = IntelligenceV2Analyzer.analyzeReplyStrategy(messages, {
+      stage,
+      latestIntent,
+      primaryEmotion,
+      urgency,
+      styleMetrics,
+      health,
+    });
+
     // 7. Recommended AI Objective Goal
     const suggestedGoal = ObjectiveRecommender.recommendGoal({
       tones,
@@ -73,6 +92,14 @@ export class ConversationIntelligenceEngine {
 
     const intelligence: ConversationIntelligence = {
       topic: analysis.topic,
+      previousTopic,
+      conversationGoal,
+      emotionalState: emotions[0]?.tone || 'Neutral',
+      energyLevel,
+      sentiment,
+      dominantParticipant,
+      speakingBalance,
+      conversationHealthScore,
       stage,
       latestIntent,
       primaryEmotion,
@@ -87,6 +114,9 @@ export class ConversationIntelligenceEngine {
       pendingItems,
       suggestedGoal,
       confidenceScores,
+      emotions,
+      replyStrategy,
+      timelineEvents,
     };
 
     ConversationIntelligenceEngine.cache.set(cacheKey, intelligence);

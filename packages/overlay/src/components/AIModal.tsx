@@ -766,6 +766,16 @@ export const AIModal: React.FC<AIModalProps> = ({
                     <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Provider:</span> {displayProviderLabel}</div>
                     <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Model:</span> {modelName}</div>
                     <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prompt:</span> {totalPromptLen} chars</div>
+                    
+                    {/* Conversation Intelligence 2.0 Diagnostics */}
+                    <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--rapport-border)', paddingTop: '6px', marginTop: '4px', fontWeight: 600, color: 'var(--rapport-accent)' }}>Conversation Analytics v2:</div>
+                    <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--rapport-text-secondary)' }}>Goal:</span> {contextSignals.conversationGoal || 'N/A'}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prev Topic:</span> {contextSignals.previousTopic || 'None'}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Health Score:</span> <strong style={{ color: 'var(--rapport-accent)' }}>{contextSignals.conversationHealthScore !== undefined ? `${contextSignals.conversationHealthScore}/100` : 'N/A'}</strong></div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Sentiment:</span> {contextSignals.sentiment ? contextSignals.sentiment.toUpperCase() : 'N/A'}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Energy Level:</span> {contextSignals.energyLevel ? contextSignals.energyLevel.toUpperCase() : 'N/A'}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Dominant:</span> {contextSignals.dominantParticipant || 'N/A'}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Balance:</span> {contextSignals.speakingBalance || 'N/A'}</div>
                   </div>
 
                   {diag.stageTimings.map((st, i) => (

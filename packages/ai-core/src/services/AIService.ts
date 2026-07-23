@@ -131,6 +131,14 @@ export class AIService {
             messagesPerDay: structuredContext.relationship?.messagesPerDay || 0,
             preferredLanguage: structuredContext.relationship?.preferredLanguage || 'English',
             commonTopics: structuredContext.relationship?.commonTopics || [],
+            // Conversation Intelligence 2.0 fields
+            previousTopic: structuredContext.intelligence?.previousTopic || 'None',
+            conversationGoal: structuredContext.intelligence?.conversationGoal || 'Maintain casual bonding',
+            sentiment: structuredContext.intelligence?.sentiment || 'neutral',
+            energyLevel: structuredContext.intelligence?.energyLevel || 'medium',
+            dominantParticipant: structuredContext.intelligence?.dominantParticipant || 'Equal',
+            speakingBalance: structuredContext.intelligence?.speakingBalance || 'Me: 50%, Other: 50%',
+            conversationHealthScore: structuredContext.intelligence?.conversationHealthScore ?? 100,
           }
         };
 
