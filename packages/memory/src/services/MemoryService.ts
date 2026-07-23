@@ -2,6 +2,7 @@ import { BrowserStorageMemoryStore } from '../store/BrowserStorageMemoryStore.js
 import { IMemoryStore } from '../store/MemoryStore.js';
 import {
   MemoryCandidate,
+  MemoryCategory,
   MemoryImportance,
   MemoryMetadata,
   MemoryQuery,
@@ -15,14 +16,33 @@ export interface CreateMemoryParams {
   id?: string;
   contactId: string;
   type: MemoryType;
+  category?: MemoryCategory;
   title: string;
   content: string;
   importance?: MemoryImportance;
+  importanceScore?: number;
   confidence?: number;
+  pinned?: boolean;
   expiresAt?: number;
   tags?: string[];
   source?: MemorySource;
   metadata?: MemoryMetadata;
+}
+
+/**
+ * Compute a token overlap similarity score (0–1) between two strings.
+ * Uses Jaccard coefficient on word token sets.
+ */
+function tokenSimilarity(a: string, b: string): number {
+  const tokenize = (s: string) =>
+    new Set(s.toLowerCase().replace(/[^a-z0-9\u0080-\uFFFF ]/g, '').split(/\s+/).filter(Boolean));
+  const setA = tokenize(a);
+  const setB = tokenize(b);
+  if (setA.size === 0 && setB.size === 0) return 1;
+  let intersection = 0;
+  setA.forEach((t) => { if (setB.has(t)) intersection++; });
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 export class MemoryService {
@@ -48,10 +68,53 @@ export class MemoryService {
     return { valid: true };
   }
 
-  public async isDuplicate(contactId: string, type: MemoryType, content: string): Promise<boolean> {
+  /**
+   * Find an existing memory that is semantically similar (>70% token overlap)
+   * to the candidate, for the same contact and type.
+   */
+  public async findSimilarMemory(
+    contactId: string,
+    type: MemoryType,
+    content: string
+  ): Promise<MemoryRecord | null> {
     const existing = await this.store.findByContact(contactId);
-    const cleanContent = content.trim().toLowerCase();
-    return existing.some((m) => m.type === type && m.content.trim().toLowerCase() === cleanContent);
+    const SIMILARITY_THRESHOLD = 0.7;
+
+    for (const record of existing) {
+      if (record.type !== type) continue;
+      const sim = tokenSimilarity(record.content, content);
+      if (sim >= SIMILARITY_THRESHOLD) return record;
+    }
+    return null;
+  }
+
+  /**
+   * Create or update a memory, merging content if a similar one already exists.
+   */
+  public async upsertMemory(params: CreateMemoryParams): Promise<MemoryRecord> {
+    const validation = this.validateMemory(params);
+    if (!validation.valid) {
+      throw new Error(`[MemoryService] Validation failed: ${validation.reason}`);
+    }
+
+    const similar = await this.findSimilarMemory(params.contactId, params.type, params.content);
+    if (similar) {
+      // Merge: keep higher importance score, update content if different
+      const updatedScore = Math.max(
+        similar.importanceScore,
+        params.importanceScore ?? similar.importanceScore
+      );
+      const updated = await this.store.update(similar.id, {
+        content: params.content.trim(),
+        title: params.title.trim(),
+        importanceScore: updatedScore,
+        importance: updatedScore >= 80 ? 'CRITICAL' : updatedScore >= 60 ? 'HIGH' : updatedScore >= 35 ? 'NORMAL' : 'LOW',
+        updatedAt: Date.now(),
+      });
+      return updated || similar;
+    }
+
+    return this.createMemory(params);
   }
 
   public async createMemory(params: CreateMemoryParams): Promise<MemoryRecord> {
@@ -60,24 +123,18 @@ export class MemoryService {
       throw new Error(`[MemoryService] Validation failed: ${validation.reason}`);
     }
 
-    const isDup = await this.isDuplicate(params.contactId, params.type, params.content);
-    if (isDup) {
-      const existing = await this.store.findByContact(params.contactId);
-      const dupRecord = existing.find(
-        (m) => m.type === params.type && m.content.trim().toLowerCase() === params.content.trim().toLowerCase()
-      );
-      if (dupRecord) return dupRecord;
-    }
-
     const now = Date.now();
     const record: MemoryRecord = {
       id: params.id || `mem_${now}_${Math.random().toString(36).substring(2, 7)}`,
       contactId: params.contactId.trim(),
       type: params.type,
+      category: params.category || 'Personal',
       title: params.title.trim(),
       content: params.content.trim(),
       importance: params.importance || 'NORMAL',
+      importanceScore: params.importanceScore ?? 40,
       confidence: params.confidence ?? 0.9,
+      pinned: params.pinned ?? false,
       createdAt: now,
       updatedAt: now,
       expiresAt: params.expiresAt,
@@ -97,12 +154,14 @@ export class MemoryService {
     const savedRecords: MemoryRecord[] = [];
     for (const candidate of candidates) {
       try {
-        const record = await this.createMemory({
+        const record = await this.upsertMemory({
           contactId,
           type: candidate.type,
+          category: candidate.category,
           title: candidate.title,
           content: candidate.content,
           importance: candidate.importance,
+          importanceScore: candidate.importanceScore,
           confidence: candidate.confidence,
           expiresAt: candidate.expiresAt,
           tags: candidate.tags,
@@ -111,7 +170,7 @@ export class MemoryService {
         });
         savedRecords.push(record);
       } catch {
-        // Skip invalid/uncertain candidates gracefully
+        // Skip invalid candidates gracefully
       }
     }
     return savedRecords;
@@ -125,9 +184,46 @@ export class MemoryService {
     return this.store.delete(id);
   }
 
+  /** Pin a memory so it is always included in retrieval. */
+  public async pinMemory(id: string): Promise<MemoryRecord | null> {
+    return this.store.update(id, { pinned: true, updatedAt: Date.now() });
+  }
+
+  /** Unpin a memory. */
+  public async unpinMemory(id: string): Promise<MemoryRecord | null> {
+    return this.store.update(id, { pinned: false, updatedAt: Date.now() });
+  }
+
+  /** Delete ALL memories for a specific contact. */
+  public async forgetContact(contactId: string): Promise<number> {
+    const records = await this.store.findByContact(contactId);
+    let deletedCount = 0;
+    for (const record of records) {
+      const ok = await this.store.delete(record.id);
+      if (ok) deletedCount++;
+    }
+    return deletedCount;
+  }
+
   public async getMemoriesForContact(contactId: string): Promise<MemoryRecord[]> {
     await this.pruneExpiredMemories(contactId);
-    return this.store.findByContact(contactId);
+    const records = await this.store.findByContact(contactId);
+    // Sort pinned first, then by importanceScore desc
+    return records.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return b.importanceScore - a.importanceScore;
+    });
+  }
+
+  public async getAllMemories(): Promise<MemoryRecord[]> {
+    const result = await this.store.find({ limit: 2000 });
+    return result.items.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  public async getUniqueContactIds(): Promise<string[]> {
+    const all = await this.getAllMemories();
+    return [...new Set(all.map((m) => m.contactId))];
   }
 
   public async queryMemories(query: MemoryQuery): Promise<MemoryResult> {

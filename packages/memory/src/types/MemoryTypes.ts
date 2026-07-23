@@ -8,9 +8,18 @@ export type MemoryType =
   | 'LOCATION'
   | 'INTEREST'
   | 'GOAL'
+  | 'RELATIONSHIP'
   | 'CUSTOM';
 
 export type MemoryImportance = 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL';
+
+export type MemoryCategory =
+  | 'Personal'
+  | 'Preferences'
+  | 'Relationships'
+  | 'Plans'
+  | 'Important dates'
+  | 'Interests';
 
 export type MemorySource = 'user_explicit' | 'extracted_heuristic' | 'system';
 
@@ -23,9 +32,11 @@ export interface MemoryMetadata {
 
 export interface MemoryCandidate {
   type: MemoryType;
+  category: MemoryCategory;
   title: string;
   content: string;
   importance: MemoryImportance;
+  importanceScore: number;
   confidence: number;
   reason: string;
   tags: string[];
@@ -38,10 +49,13 @@ export interface MemoryRecord {
   id: string;
   contactId: string;
   type: MemoryType;
+  category: MemoryCategory;
   title: string;
   content: string;
   importance: MemoryImportance;
+  importanceScore: number;
   confidence: number;
+  pinned: boolean;
   createdAt: number;
   updatedAt: number;
   expiresAt?: number;
@@ -53,7 +67,9 @@ export interface MemoryRecord {
 export interface MemoryQuery {
   contactId?: string;
   type?: MemoryType;
+  category?: MemoryCategory;
   minImportance?: MemoryImportance;
+  pinned?: boolean;
   tags?: string[];
   searchQuery?: string;
   limit?: number;
@@ -76,6 +92,8 @@ export interface MemoryRetrievalQuery {
   relationshipType?: string;
   memoryTypes?: MemoryType[];
   maximumResults?: number;
+  /** Max chars budget for the combined memory context in prompt (default 1600) */
+  maxPromptChars?: number;
 }
 
 export interface MemoryContext {

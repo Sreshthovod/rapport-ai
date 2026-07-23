@@ -7,7 +7,7 @@ import {
   ThemePreference,
 } from '@rapport/shared';
 import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager } from '@rapport/ai-core';
-import { BrowserStorageMemoryStore } from '@rapport/memory';
+import { BrowserStorageMemoryStore, MemoryRecord, MemoryCategory, MemoryService } from '@rapport/memory';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Interfaces
@@ -57,11 +57,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     settingsManager.getMemoryStatisticsAsync().then(setMemStats).catch(() => {});
   }, [settingsManager]);
 
+  // Memory Viewer state
+  const memoryService = new MemoryService(BrowserStorageMemoryStore.getInstance());
+  const [memRecords, setMemRecords] = useState<MemoryRecord[]>([]);
+  const [memSearch, setMemSearch] = useState('');
+  const [memCategoryFilter, setMemCategoryFilter] = useState<MemoryCategory | 'all'>('all');
+  const [memSortBy, setMemSortBy] = useState<'recent' | 'importance'>('recent');
+  const [memLoading, setMemLoading] = useState(false);
+  const [editingMemory, setEditingMemory] = useState<MemoryRecord | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [showAddMemory, setShowAddMemory] = useState(false);
+  const [newMemTitle, setNewMemTitle] = useState('');
+  const [newMemContent, setNewMemContent] = useState('');
+  const [newMemCategory, setNewMemCategory] = useState<MemoryCategory>('Personal');
+
+  const loadMemories = useCallback(async () => {
+    setMemLoading(true);
+    try {
+      const all = await memoryService.getAllMemories();
+      setMemRecords(all);
+      const totalBytes = JSON.stringify(all).length;
+      const contactIds = new Set(all.map((m) => m.contactId));
+      setMemStats({ totalMemories: all.length, totalContacts: contactIds.size, storageSizeBytes: totalBytes });
+    } catch { /* noop */ } finally {
+      setMemLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'memory') {
-      refreshMemStats();
+      loadMemories();
     }
-  }, [activeTab, refreshMemStats]);
+  }, [activeTab, loadMemories]);
 
   // API Keys state
   const [openaiKey, setOpenaiKey] = useState('');
@@ -990,142 +1018,379 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
           {/* ────────────────────────────────────────────────────────────────── */}
           {/* TAB: MEMORY                                                        */}
           {/* ────────────────────────────────────────────────────────────────── */}
-          {activeTab === 'memory' && (
-            <div style={S.section}>
-              <SectionHeading
-                title="Memory System"
-                subtitle="Configure the long-term memory engine that recalls facts and context about contacts."
-              />
+          {activeTab === 'memory' && (() => {
+            // ── Derived filtered / sorted list ──────────────────────────────
+            const CATEGORY_ICONS: Record<string, string> = {
+              'Personal': '👤', 'Preferences': '❤️', 'Relationships': '🤝',
+              'Plans': '📅', 'Important dates': '🎂', 'Interests': '⭐',
+            };
+            const IMPORTANCE_COLOR: Record<string, string> = {
+              'CRITICAL': '#ef4444', 'HIGH': '#f59e0b', 'NORMAL': C.accent, 'LOW': C.textTertiary,
+            };
 
-              <div
-                style={{
-                  background: C.bgInput,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                  marginBottom: '16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-around',
-                }}
-              >
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
-                    Extracted Memories
-                  </div>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.accent }}>
-                    {memStats.totalMemories}
-                  </div>
+            const filtered = memRecords
+              .filter((m) => {
+                if (memCategoryFilter !== 'all' && m.category !== memCategoryFilter) return false;
+                if (memSearch) {
+                  const q = memSearch.toLowerCase();
+                  return m.title.toLowerCase().includes(q) || m.content.toLowerCase().includes(q) || m.contactId.toLowerCase().includes(q);
+                }
+                return true;
+              })
+              .sort((a, b) => {
+                if (a.pinned && !b.pinned) return -1;
+                if (!a.pinned && b.pinned) return 1;
+                if (memSortBy === 'importance') return b.importanceScore - a.importanceScore;
+                return b.updatedAt - a.updatedAt;
+              });
+
+            // ── Group by date ───────────────────────────────────────────────
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+            const lastWeek = new Date(today); lastWeek.setDate(today.getDate() - 7);
+
+            type DateGroup = { label: string; items: MemoryRecord[] };
+            const groups: DateGroup[] = [];
+            const addToGroup = (label: string, item: MemoryRecord) => {
+              let g = groups.find((g) => g.label === label);
+              if (!g) { g = { label, items: [] }; groups.push(g); }
+              g.items.push(item);
+            };
+            filtered.forEach((m) => {
+              const d = new Date(m.updatedAt); d.setHours(0, 0, 0, 0);
+              if (d.getTime() === today.getTime()) addToGroup('Today', m);
+              else if (d.getTime() === yesterday.getTime()) addToGroup('Yesterday', m);
+              else if (d >= lastWeek) addToGroup('This week', m);
+              else addToGroup('Older', m);
+            });
+
+            const MemCard = ({ m }: { m: MemoryRecord }) => (
+              <div key={m.id} style={{
+                background: m.pinned ? (isDark ? 'rgba(0,168,132,0.07)' : 'rgba(0,168,132,0.04)') : C.bgCard,
+                border: `1px solid ${m.pinned ? 'rgba(0,168,132,0.25)' : C.border}`,
+                borderRadius: C.radiusSm,
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}>
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {m.pinned && <span style={{ fontSize: '12px', lineHeight: 1 }}>📌</span>}
+                  <span style={{
+                    fontSize: '9.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '20px',
+                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                    color: C.textSecondary,
+                  }}>
+                    {CATEGORY_ICONS[m.category] || '💡'} {m.category}
+                  </span>
+                  <span style={{
+                    fontSize: '9.5px', fontWeight: 600, padding: '2px 7px', borderRadius: '20px',
+                    background: `${IMPORTANCE_COLOR[m.importance]}18`,
+                    color: IMPORTANCE_COLOR[m.importance],
+                  }}>
+                    {m.importance}
+                  </span>
+                  <span style={{ fontSize: '10px', color: C.textTertiary, marginLeft: 'auto' }}>
+                    {m.contactId}
+                  </span>
                 </div>
-                <div style={{ width: '1px', height: '24px', background: C.border }} />
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
-                    Contacts Remembered
-                  </div>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.textPrimary }}>
-                    {memStats.totalContacts}
-                  </div>
-                </div>
-                <div style={{ width: '1px', height: '24px', background: C.border }} />
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
-                    Database Size
-                  </div>
-                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.textPrimary }}>
-                    {(memStats.storageSizeBytes / 1024).toFixed(1)} KB
-                  </div>
-                </div>
-              </div>
-
-              <ToggleRow
-                label="Remember Preferences"
-                description="Stores choices, likes, and dislikes mentioned in chat."
-                checked={settings.rememberPreferences}
-                onChange={(v) => handleUpdate({ rememberPreferences: v })}
-              />
-
-              <ToggleRow
-                label="Remember Plans"
-                description="Retains upcoming scheduled tasks, invitations, and appointments."
-                checked={settings.rememberPlans}
-                onChange={(v) => handleUpdate({ rememberPlans: v })}
-              />
-
-              <ToggleRow
-                label="Remember Important Dates"
-                description="Stores birthdays, milestones, and deadlines."
-                checked={settings.rememberDates}
-                onChange={(v) => handleUpdate({ rememberDates: v })}
-              />
-
-              <ToggleRow
-                label="Remember Interests"
-                description="Identifies hobbies, activities, and recurring topics."
-                checked={settings.rememberInterests}
-                onChange={(v) => handleUpdate({ rememberInterests: v })}
-              />
-
-              <hr style={S.divider} />
-              <SectionHeading title="Memory Actions" subtitle="Remove local stored data for privacy control." />
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() =>
-                    setConfirmDialog({
-                      title: 'Forget This Contact',
-                      message:
-                        'Are you sure you want to permanently erase all memories extracted for the current active contact? This cannot be undone.',
-                      confirmLabel: 'Forget Contact',
-                      onConfirm: () => {
-                        addToast('Current contact memories forgotten', 'success');
+                {/* Title */}
+                <div style={{ fontSize: '12.5px', fontWeight: 600, color: C.textPrimary }}>{m.title}</div>
+                {/* Content */}
+                <div style={{ fontSize: '11.5px', color: C.textSecondary, lineHeight: 1.45 }}>{m.content}</div>
+                {/* Action row */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                  <button
+                    onClick={async () => {
+                      m.pinned ? await memoryService.unpinMemory(m.id) : await memoryService.pinMemory(m.id);
+                      await loadMemories();
+                    }}
+                    style={{ ...S.btnOutline, padding: '3px 10px', fontSize: '11px' }}
+                  >{m.pinned ? 'Unpin' : 'Pin'}</button>
+                  <button
+                    onClick={() => { setEditingMemory(m); setEditTitle(m.title); setEditContent(m.content); }}
+                    style={{ ...S.btnOutline, padding: '3px 10px', fontSize: '11px' }}
+                  >Edit</button>
+                  <button
+                    onClick={() => setConfirmDialog({
+                      title: 'Delete Memory',
+                      message: `Delete "${m.title}"? This cannot be undone.`,
+                      confirmLabel: 'Delete',
+                      onConfirm: async () => {
+                        await memoryService.deleteMemory(m.id);
+                        await loadMemories();
+                        addToast('Memory deleted', 'success');
                         setConfirmDialog(null);
                       },
-                    })
-                  }
-                  style={S.btnOutline}
-                >
-                  Forget This Contact
-                </button>
-                <button
-                  onClick={() =>
-                    setConfirmDialog({
+                    })}
+                    style={{ ...S.btnDanger, padding: '3px 10px', fontSize: '11px', marginLeft: 'auto' }}
+                  >Delete</button>
+                </div>
+              </div>
+            );
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Edit Memory Modal */}
+                {editingMemory && (
+                  <div style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <div style={{
+                      background: C.bgCard, borderRadius: C.radius, padding: '20px', width: '340px',
+                      border: `1px solid ${C.border}`, boxShadow: C.shadow,
+                      display: 'flex', flexDirection: 'column', gap: '12px',
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: C.textPrimary }}>Edit Memory</div>
+                      <div style={S.fieldGroup}>
+                        <span style={S.label}>Title</span>
+                        <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
+                          style={{ ...S.input, fontFamily: C.fontFamily }} />
+                      </div>
+                      <div style={S.fieldGroup}>
+                        <span style={S.label}>Content</span>
+                        <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)}
+                          rows={4} style={{ ...S.input, fontFamily: C.fontFamily, resize: 'vertical' as const }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setEditingMemory(null)} style={S.btnOutline}>Cancel</button>
+                        <button
+                          onClick={async () => {
+                            if (!editingMemory) return;
+                            await memoryService.updateMemory(editingMemory.id, { title: editTitle.trim(), content: editContent.trim() });
+                            await loadMemories();
+                            addToast('Memory updated', 'success');
+                            setEditingMemory(null);
+                          }}
+                          style={S.btnPrimary}
+                        >Save</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Memory Modal */}
+                {showAddMemory && (
+                  <div style={{
+                    position: 'fixed', inset: 0, zIndex: 9999,
+                    background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <div style={{
+                      background: C.bgCard, borderRadius: C.radius, padding: '20px', width: '340px',
+                      border: `1px solid ${C.border}`, boxShadow: C.shadow,
+                      display: 'flex', flexDirection: 'column', gap: '12px',
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: C.textPrimary }}>Add Memory</div>
+                      <div style={S.fieldGroup}>
+                        <span style={S.label}>Title</span>
+                        <input placeholder="e.g. Priya loves sushi" value={newMemTitle}
+                          onChange={(e) => setNewMemTitle(e.target.value)}
+                          style={{ ...S.input, fontFamily: C.fontFamily }} />
+                      </div>
+                      <div style={S.fieldGroup}>
+                        <span style={S.label}>Content</span>
+                        <textarea placeholder="Describe the memory in detail..." value={newMemContent}
+                          onChange={(e) => setNewMemContent(e.target.value)}
+                          rows={3} style={{ ...S.input, fontFamily: C.fontFamily, resize: 'vertical' as const }} />
+                      </div>
+                      <div style={S.fieldGroup}>
+                        <span style={S.label}>Category</span>
+                        <select value={newMemCategory} onChange={(e) => setNewMemCategory(e.target.value as MemoryCategory)}
+                          style={S.select}>
+                          {(['Personal','Preferences','Relationships','Plans','Important dates','Interests'] as MemoryCategory[]).map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => { setShowAddMemory(false); setNewMemTitle(''); setNewMemContent(''); }} style={S.btnOutline}>Cancel</button>
+                        <button
+                          onClick={async () => {
+                            if (!newMemTitle.trim() || !newMemContent.trim()) {
+                              addToast('Title and content are required', 'error'); return;
+                            }
+                            await memoryService.createMemory({
+                              contactId: 'user_explicit',
+                              type: 'CUSTOM',
+                              category: newMemCategory,
+                              title: newMemTitle.trim(),
+                              content: newMemContent.trim(),
+                              source: 'user_explicit',
+                              importance: 'NORMAL',
+                              importanceScore: 45,
+                            });
+                            await loadMemories();
+                            addToast('Memory added', 'success');
+                            setShowAddMemory(false);
+                            setNewMemTitle('');
+                            setNewMemContent('');
+                          }}
+                          style={S.btnPrimary}
+                        >Add Memory</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: C.textPrimary }}>🧠 Memory</div>
+                    <div style={{ fontSize: '11px', color: C.textSecondary, marginTop: '2px' }}>
+                      Long-term memory recalled to personalise replies.
+                    </div>
+                  </div>
+                  <button onClick={() => setShowAddMemory(true)} style={S.btnPrimary}>
+                    + Add
+                  </button>
+                </div>
+
+                {/* Stats bar */}
+                <div style={{
+                  background: C.bgInput, border: `1px solid ${C.border}`,
+                  borderRadius: C.radiusSm, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+                }}>
+                  {[
+                    { label: 'Memories', value: memStats.totalMemories, color: C.accent },
+                    { label: 'Contacts', value: memStats.totalContacts, color: C.textPrimary },
+                    { label: 'Size', value: `${(memStats.storageSizeBytes / 1024).toFixed(1)} KB`, color: C.textPrimary },
+                  ].map((stat, i, arr) => (
+                    <React.Fragment key={stat.label}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '10.5px', color: C.textSecondary, fontWeight: 500 }}>{stat.label}</div>
+                        <div style={{ fontSize: '16px', fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                      </div>
+                      {i < arr.length - 1 && <div style={{ width: '1px', height: '20px', background: C.border }} />}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                {/* Search + Filters */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input
+                    placeholder="🔍  Search memories..."
+                    value={memSearch}
+                    onChange={(e) => setMemSearch(e.target.value)}
+                    style={{ ...S.input, fontFamily: C.fontFamily, fontSize: '12px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select value={memCategoryFilter} onChange={(e) => setMemCategoryFilter(e.target.value as MemoryCategory | 'all')}
+                      style={{ ...S.select, fontSize: '11.5px' }}>
+                      <option value="all">All Categories</option>
+                      {(['Personal','Preferences','Relationships','Plans','Important dates','Interests'] as MemoryCategory[]).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <select value={memSortBy} onChange={(e) => setMemSortBy(e.target.value as 'recent' | 'importance')}
+                      style={{ ...S.select, fontSize: '11.5px' }}>
+                      <option value="recent">Sort: Recent</option>
+                      <option value="importance">Sort: Importance</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                {memLoading ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: C.textTertiary, fontSize: '12px' }}>Loading memories...</div>
+                ) : filtered.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center', padding: '30px 16px',
+                    border: `1px dashed ${C.border}`, borderRadius: C.radiusSm,
+                    color: C.textTertiary, fontSize: '12px',
+                  }}>
+                    {memSearch || memCategoryFilter !== 'all' ? 'No memories match your filter.' : 'No memories yet. They will be extracted automatically during conversations.'}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {groups.map((group) => (
+                      <div key={group.label}>
+                        <div style={{
+                          fontSize: '10px', fontWeight: 700, color: C.textTertiary,
+                          textTransform: 'uppercase', letterSpacing: '0.08em',
+                          marginBottom: '6px', padding: '0 2px',
+                        }}>{group.label}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {group.items.map((m) => <MemCard key={m.id} m={m} />)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Memory Settings Toggles */}
+                <hr style={S.divider} />
+                <SectionHeading title="Memory Settings" subtitle="Control what types of information are remembered." />
+
+                <ToggleRow
+                  label="Remember Preferences"
+                  description="Stores choices, likes, and dislikes mentioned in chat."
+                  checked={settings.rememberPreferences}
+                  onChange={(v) => handleUpdate({ rememberPreferences: v })}
+                />
+                <ToggleRow
+                  label="Remember Plans"
+                  description="Retains upcoming scheduled tasks, invitations, and appointments."
+                  checked={settings.rememberPlans}
+                  onChange={(v) => handleUpdate({ rememberPlans: v })}
+                />
+                <ToggleRow
+                  label="Remember Important Dates"
+                  description="Stores birthdays, milestones, and deadlines."
+                  checked={settings.rememberDates}
+                  onChange={(v) => handleUpdate({ rememberDates: v })}
+                />
+                <ToggleRow
+                  label="Remember Interests"
+                  description="Identifies hobbies, activities, and recurring topics."
+                  checked={settings.rememberInterests}
+                  onChange={(v) => handleUpdate({ rememberInterests: v })}
+                />
+
+                {/* Memory Actions */}
+                <hr style={S.divider} />
+                <SectionHeading title="Memory Actions" subtitle="Remove local stored data for privacy control." />
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setConfirmDialog({
+                      title: 'Forget This Contact',
+                      message: 'Permanently erase all memories for the current active contact? This cannot be undone.',
+                      confirmLabel: 'Forget Contact',
+                      onConfirm: async () => {
+                        // In overlay context the contactId is 'active-chat'; in settings use a placeholder
+                        await memoryService.forgetContact('active-chat');
+                        await loadMemories();
+                        addToast('Contact memories forgotten', 'success');
+                        setConfirmDialog(null);
+                      },
+                    })}
+                    style={S.btnOutline}
+                  >
+                    Forget This Contact
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog({
                       title: 'Clear All Memories',
-                      message:
-                        'This will erase the complete long-term memory database for all contacts. Are you sure you want to delete everything?',
+                      message: 'This will erase the complete memory database for ALL contacts. This cannot be undone.',
                       confirmLabel: 'Clear Database',
-                      onConfirm: () => {
+                      onConfirm: async () => {
+                        await BrowserStorageMemoryStore.getInstance().clear();
+                        await loadMemories();
                         addToast('All memory records cleared', 'success');
                         setConfirmDialog(null);
                       },
-                    })
-                  }
-                  style={S.btnDanger}
-                >
-                  Clear All Memories
-                </button>
-              </div>
-
-              <hr style={S.divider} />
-              <div style={S.fieldGroup}>
-                <span style={S.label}>Memory Database Size</span>
-                <div
-                  style={{
-                    padding: '12px',
-                    borderRadius: C.radiusSm,
-                    background: C.bgInput,
-                    border: `1px solid ${C.border}`,
-                    fontSize: '12px',
-                    color: C.textSecondary,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  • Active memory vectors: <strong style={{ color: C.accent }}>0</strong> records
-                  <br />
-                  • Memory storage footprint: <strong style={{ color: C.accent }}>0 bytes</strong>
+                    })}
+                    style={S.btnDanger}
+                  >
+                    Clear All Memories
+                  </button>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ────────────────────────────────────────────────────────────────── */}
           {/* TAB: PRIVACY                                                       */}

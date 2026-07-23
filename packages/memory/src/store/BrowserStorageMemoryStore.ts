@@ -1,10 +1,19 @@
 import { withTimeout } from '@rapport/shared';
-import { MemoryQuery, MemoryRecord, MemoryResult } from '../types/MemoryTypes.js';
+import { MemoryCategory, MemoryQuery, MemoryRecord, MemoryResult } from '../types/MemoryTypes.js';
 import { IMemoryStore } from './MemoryStore.js';
 
 // Declare chrome for extension context
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const chrome: any;
+
+/** Apply v2 defaults to records persisted before Memory Engine v2. */
+function migrateRecord(item: MemoryRecord): MemoryRecord {
+  const r = item as unknown as Record<string, unknown>;
+  if (!item.category) r['category'] = 'Personal' satisfies MemoryCategory;
+  if (item.importanceScore == null) r['importanceScore'] = 40;
+  if (item.pinned == null) r['pinned'] = false;
+  return item;
+}
 
 export class BrowserStorageMemoryStore implements IMemoryStore {
   private static instance: BrowserStorageMemoryStore | null = null;
@@ -41,13 +50,17 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
         const result = (await withTimeout(storagePromise, 3000, 'BrowserStorageMemoryStore:loadAll')) as Record<string, unknown>;
         const rawList = (result?.[this.storageKey] as MemoryRecord[]) || [];
         this.inMemoryMap.clear();
-        rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
+        rawList.forEach((item) => {
+          this.inMemoryMap.set(item.id, migrateRecord(item));
+        });
       } else if (typeof localStorage !== 'undefined') {
         const raw = localStorage.getItem(this.storageKey);
         this.inMemoryMap.clear();
         if (raw) {
           const rawList = JSON.parse(raw) as MemoryRecord[];
-          rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
+          rawList.forEach((item) => {
+            this.inMemoryMap.set(item.id, migrateRecord(item));
+          });
         }
       }
     } catch (err) {
@@ -118,6 +131,14 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
 
     if (query.type) {
       records = records.filter((r) => r.type === query.type);
+    }
+
+    if (query.category) {
+      records = records.filter((r) => r.category === query.category);
+    }
+
+    if (query.pinned !== undefined) {
+      records = records.filter((r) => r.pinned === query.pinned);
     }
 
     if (query.tags && query.tags.length > 0) {

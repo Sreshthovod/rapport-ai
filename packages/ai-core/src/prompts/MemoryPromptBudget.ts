@@ -37,11 +37,12 @@ export class MemoryPromptBudget {
     const allRecords = [...memoryContext.relevantMemories];
     const charCountBefore = allRecords.reduce((sum, r) => sum + r.content.length, 0);
 
-    // Sort by importance then recency
-    const importanceWeight: Record<string, number> = { CRITICAL: 4, HIGH: 3, NORMAL: 2, LOW: 1 };
+    // Sort: pinned first, then by numeric importanceScore desc, then recency
     allRecords.sort((a, b) => {
-      const importanceDiff = (importanceWeight[b.importance] ?? 2) - (importanceWeight[a.importance] ?? 2);
-      if (importanceDiff !== 0) return importanceDiff;
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      const scoreDiff = (b.importanceScore ?? 40) - (a.importanceScore ?? 40);
+      if (scoreDiff !== 0) return scoreDiff;
       return b.updatedAt - a.updatedAt;
     });
 
@@ -110,6 +111,8 @@ export class MemoryPromptBudget {
   }
 
   private static formatMemoryLine(record: MemoryRecord): string {
-    return `- [${record.type}] ${record.title}: ${record.content}`;
+    const pin = record.pinned ? '📌 ' : '';
+    const cat = record.category ? `[${record.category}] ` : `[${record.type}] `;
+    return `- ${pin}${cat}${record.title}: ${record.content}`;
   }
 }

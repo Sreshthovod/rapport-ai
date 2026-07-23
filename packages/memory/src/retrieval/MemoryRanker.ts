@@ -13,16 +13,20 @@ export class MemoryRanker {
     const ranked: RankedMemory[] = records.map((record) => {
       let score = 0;
 
-      // 1. Contact Match Score (+40 pts)
+      // 1. Pinned memories always surface first (+30 pts)
+      if (record.pinned) {
+        score += 30;
+      }
+
+      // 2. Contact Match Score (+40 pts)
       if (record.contactId === query.contactId) {
         score += 40;
       }
 
-      // 2. Importance Score (+5 to +25 pts)
-      const importanceMap = { CRITICAL: 25, HIGH: 18, NORMAL: 10, LOW: 5 };
-      score += importanceMap[record.importance] || 10;
+      // 3. Numeric Importance Score (0–100, scaled to 0–25 pts)
+      score += Math.round((record.importanceScore ?? 40) * 0.25);
 
-      // 3. Topic & Keyword Overlap (+20 pts max)
+      // 4. Topic & Keyword Overlap (+20 pts max)
       const text = `${record.title} ${record.content} ${record.tags.join(' ')}`.toLowerCase();
       if (topic && text.includes(topic)) {
         score += 15;
@@ -34,7 +38,7 @@ export class MemoryRanker {
       });
       score += Math.min(keywordHits * 5, 20);
 
-      // 4. Recency Score (+10 pts max for recent records)
+      // 5. Recency Score (+10 pts max for recent records)
       const daysOld = (Date.now() - record.createdAt) / (1000 * 60 * 60 * 24);
       if (daysOld <= 7) {
         score += 10;
@@ -42,7 +46,7 @@ export class MemoryRanker {
         score += 5;
       }
 
-      // 5. Confidence Score Multiplier
+      // 6. Confidence Multiplier
       const finalScore = score * (record.confidence || 0.9);
 
       return {

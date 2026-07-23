@@ -5,6 +5,8 @@ import { MemoryFilter } from './MemoryFilter.js';
 import { MemoryRanker } from './MemoryRanker.js';
 import { RetrievalCache } from './RetrievalCache.js';
 
+const DEFAULT_MAX_PROMPT_CHARS = 1600;
+
 export class MemoryRetriever {
   private static instance: MemoryRetriever | null = null;
   private readonly store: IMemoryStore;
@@ -24,23 +26,47 @@ export class MemoryRetriever {
   public async retrieveMemoryContext(query: MemoryRetrievalQuery): Promise<MemoryContext> {
     const startTime = Date.now();
     const maxResults = query.maximumResults || 10;
+    const maxPromptChars = query.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
     const cacheKey = `${query.contactId}_${query.currentTopic || 'all'}_${maxResults}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;
 
-    // Retrieve records via IMemoryStore interface (never accessing browser storage directly)
     const rawRecords = await this.store.findByContact(query.contactId);
     const totalEvaluated = rawRecords.length;
 
     // Filter candidate records
     const filtered = MemoryFilter.filterMemories(rawRecords, query);
 
-    // Rank candidate records
+    // Rank candidate records — pinned first, then by score
     const ranked = MemoryRanker.rankMemories(filtered, query);
-    const topRecords: MemoryRecord[] = ranked.slice(0, maxResults).map((r) => r.record);
 
-    // Categorize records for provider-independent consumption
+    // Apply token budget cap: stop adding memories once budget is exhausted
+    const topRecords: MemoryRecord[] = [];
+    let charCount = 0;
+
+    // Always include pinned memories first (they bypass regular budget)
+    const pinnedRecords = ranked.filter((r) => r.record.pinned);
+    const regularRecords = ranked.filter((r) => !r.record.pinned);
+
+    for (const { record } of pinnedRecords) {
+      const recordChars = record.content.length + record.title.length;
+      if (charCount + recordChars <= maxPromptChars) {
+        topRecords.push(record);
+        charCount += recordChars;
+      }
+    }
+
+    for (const { record } of regularRecords) {
+      if (topRecords.length >= maxResults) break;
+      const recordChars = record.content.length + record.title.length;
+      if (charCount + recordChars <= maxPromptChars) {
+        topRecords.push(record);
+        charCount += recordChars;
+      }
+    }
+
+    // Categorize for provider-independent consumption
     const importantFacts = topRecords.filter((r) => r.importance === 'CRITICAL' || r.importance === 'HIGH');
     const activePlans = topRecords.filter((r) => r.type === 'PLAN' || r.type === 'PROMISE');
     const recurringPreferences = topRecords.filter((r) => r.type === 'PREFERENCE' || r.type === 'INTEREST');
