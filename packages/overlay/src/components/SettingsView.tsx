@@ -5,8 +5,9 @@ import {
   OverlayPosition,
   RapportSettings,
   ThemePreference,
+  WritingStyleProfile,
 } from '@rapport/shared';
-import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager } from '@rapport/ai-core';
+import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager, WritingStyleEngine } from '@rapport/ai-core';
 import { BrowserStorageMemoryStore, MemoryRecord, MemoryCategory, MemoryService } from '@rapport/memory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,11 +86,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     }
   }, []);
 
+  // Writing Style state
+  const [styleProfile, setStyleProfile] = useState<WritingStyleProfile | null>(null);
+
+  const loadStyleProfile = useCallback(async () => {
+    try {
+      const prof = await WritingStyleEngine.getInstance().getProfile();
+      setStyleProfile(prof);
+    } catch { /* noop */ }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'memory') {
       loadMemories();
+    } else if (activeTab === 'style') {
+      loadStyleProfile();
     }
-  }, [activeTab, loadMemories]);
+  }, [activeTab, loadMemories, loadStyleProfile]);
 
   // API Keys state
   const [openaiKey, setOpenaiKey] = useState('');
@@ -1012,6 +1025,128 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                   );
                 })}
               </div>
+
+              {/* LEARNED WRITING STYLE PROFILE CARD */}
+              {(settings.writingStyle === 'usual' || !settings.writingStyle) && (
+                <>
+                  <hr style={S.divider} />
+                  <SectionHeading
+                    title="Learned Writing Style"
+                    subtitle="Directly inferred by analyzing your actual outgoing messages."
+                  />
+
+                  {styleProfile && styleProfile.samplesAnalyzed > 0 ? (
+                    <div style={{
+                      background: C.bgCard,
+                      border: `1px solid ${C.border}`,
+                      borderRadius: C.radius,
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '12px',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11.5px', color: C.textSecondary, fontWeight: 500 }}>
+                          Analyzed Messages: <strong style={{ color: C.textPrimary }}>{styleProfile.samplesAnalyzed}</strong>
+                        </span>
+                        {styleProfile.samplesAnalyzed < 10 && (
+                          <span style={S.badge(C.warning, C.warningMuted)}>Learning (Needs 10 msgs)</span>
+                        )}
+                        {styleProfile.samplesAnalyzed >= 10 && (
+                          <span style={S.badge(C.success, C.successMuted)}>Active</span>
+                        )}
+                      </div>
+
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '10px',
+                        fontSize: '12px',
+                        lineHeight: 1.5,
+                      }}>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Avg Length</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>{styleProfile.avgMessageLength} words</div>
+                        </div>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Emoji Frequency</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>{(styleProfile.emojiFrequency / 100).toFixed(1)} per msg</div>
+                        </div>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Language Mix</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>
+                            {styleProfile.hinglishRatio >= 0.25 ? 'Hinglish Mix' : 'English Only'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Slang Usage</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>
+                            {styleProfile.slangRatio >= 0.3 ? 'Frequent' : styleProfile.slangRatio >= 0.1 ? 'Occasional' : 'Rare'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Capitalization</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>
+                            {styleProfile.capitalizationRatio <= 0.2 ? 'Lowercase' : 'Standard'}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Punctuation</div>
+                          <div style={{ color: C.textPrimary, fontWeight: 500 }}>
+                            {styleProfile.punctuationRatio <= 0.2 ? 'Rare' : 'Standard'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {styleProfile.commonPhrases.length > 0 && (
+                        <div>
+                          <div style={{ color: C.textTertiary, fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Common Words & Phrases</div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {styleProfile.commonPhrases.map((phrase, i) => (
+                              <span key={i} style={{
+                                fontSize: '11px',
+                                background: C.bgInput,
+                                border: `1px solid ${C.border}`,
+                                borderRadius: C.radiusSm,
+                                padding: '2px 6px',
+                                color: C.textSecondary,
+                              }}>{phrase}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => setConfirmDialog({
+                          title: 'Reset Learned Style',
+                          message: 'Are you sure you want to permanently erase the writing style profile learned from your outgoing messages? This cannot be undone.',
+                          confirmLabel: 'Reset Style',
+                          onConfirm: async () => {
+                            await WritingStyleEngine.getInstance().reset();
+                            setStyleProfile(null);
+                            addToast('Learned writing style reset successfully', 'success');
+                            setConfirmDialog(null);
+                          },
+                        })}
+                        style={{ ...S.btnDanger, marginTop: '4px' }}
+                      >
+                        Reset Learned Style
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '24px 16px',
+                      border: `1px dashed ${C.border}`,
+                      borderRadius: C.radius,
+                      color: C.textTertiary,
+                      fontSize: '12px',
+                    }}>
+                      No writing style learned yet. Send outgoing messages in chat and Rapport will automatically discover your natural writing style!
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 

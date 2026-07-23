@@ -17,3 +17,8 @@ export { MetricsTracker } from './providers/MetricsTracker.js';
 export { AIService } from './services/AIService.js';
 export { FakeAIService } from './services/FakeAIService.js';
 export { SettingsManager } from './services/SettingsManager.js';
+export { WritingStyleEngine } from './style/WritingStyleEngine.js';
+export { WritingStyleAnalyzer } from './style/WritingStyleAnalyzer.js';
+export { WritingStyleStore } from './style/WritingStyleStore.js';
+export { WritingStyleTest } from './style/WritingStyle.test.js';
+

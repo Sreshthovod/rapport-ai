@@ -10,6 +10,7 @@ import { MemoryPromptBudget } from './MemoryPromptBudget.js';
 import { TemplateRegistry } from './TemplateRegistry.js';
 import { SettingsManager } from '../services/SettingsManager.js';
 import { ReplyTargetResolver } from '../context/ReplyTargetResolver.js';
+import { WritingStyleEngine } from '../style/WritingStyleEngine.js';
 
 export const DEBUG_AI_PIPELINE = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
 
@@ -93,8 +94,34 @@ export class PromptComposer {
       const settings = SettingsManager.getInstance().getSettings();
       const activeLanguage = context.language || (settings.language && settings.language !== 'auto' ? settings.language : 'English');
       const modeInstruction = PromptComposer.getConversationModeInstruction(settings.conversationMode || 'natural');
-      const styleInstruction = PromptComposer.getWritingStyleInstruction(settings.writingStyle || 'usual');
       const personalityInstruction = PromptComposer.getPersonalityInstruction(settings.suggestionPersonality || 'balanced');
+
+      // Learn writing style integration
+      let styleInstruction = PromptComposer.getWritingStyleInstruction(settings.writingStyle || 'usual');
+      let learnedStyleSection = '';
+      if (
+        (settings.writingStyle === 'usual' || !settings.writingStyle) &&
+        context.writingStyleProfile &&
+        context.writingStyleProfile.samplesAnalyzed >= 10
+      ) {
+        const desc = WritingStyleEngine.getInstance().toPromptDescriptor(context.writingStyleProfile);
+        learnedStyleSection = [
+          `=== LEARNED USER WRITING STYLE (BASED ON ${context.writingStyleProfile.samplesAnalyzed} OUTGOING MESSAGES) ===`,
+          `MESSAGE LENGTH: ${desc.lengthGuidance}`,
+          `EMOJI USAGE: ${desc.emojiGuidance}`,
+          `FORMALITY: ${desc.formalityGuidance}`,
+          `SLANG: ${desc.slangGuidance}`,
+          `LANGUAGE MIX: ${desc.hinglishGuidance}`,
+          `CAPITALIZATION: ${desc.capitalizationGuidance}`,
+          `PUNCTUATION: ${desc.punctuationGuidance}`,
+          desc.greetingExample !== 'none' ? `COMMON GREETINGS: ${desc.greetingExample}` : '',
+          desc.closingExample !== 'none' ? `COMMON CLOSINGS: ${desc.closingExample}` : '',
+          desc.commonPhrasesStr !== 'none' ? `COMMON WORDS/PHRASES: ${desc.commonPhrasesStr}` : '',
+          `MANDATORY RULE: Closely mimic these exact user writing traits in all 3 suggested replies.`,
+        ].filter(Boolean).join('\n');
+
+        styleInstruction = `Learned writing style profile (attached below)`;
+      }
 
       const styleSection = communicationStyle
         ? `COMMUNICATION STYLE: ${communicationStyle.formality} | ${communicationStyle.playfulness} | ${communicationStyle.expressiveness}`
@@ -137,6 +164,8 @@ export class PromptComposer {
         `WRITING STYLE PRESET: ${styleInstruction}`,
         `PERSONALITY STANCE: ${personalityInstruction}`,
         `RECOMMENDED REPLY STRATEGY: ${suggestedStrategy}`,
+        ``,
+        learnedStyleSection,
         ``,
         `=== RELATIONSHIP CONTEXT ===`,
         `CONTACT NAME: ${contactName}`,

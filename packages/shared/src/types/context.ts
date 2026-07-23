@@ -1,5 +1,6 @@
 import { ConversationIntelligence } from './intelligence.js';
 import { RelationshipContext } from './relationship.js';
+import { WritingStyleProfile } from './writing-style.js';
 
 export type ToneType =
   | 'Friendly'
@@ -100,4 +101,5 @@ export interface StructuredAIContext {
   intelligence?: ConversationIntelligence;
   relationship?: RelationshipContext;
   memoryContext?: unknown;
+  writingStyleProfile?: WritingStyleProfile;
 }

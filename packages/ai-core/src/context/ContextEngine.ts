@@ -16,6 +16,7 @@ import { ContextSummaryGenerator } from './SummaryGenerator.js';
 import { HeuristicToneDetector } from './ToneDetector.js';
 import { LanguageDetector } from './LanguageDetector.js';
 import { ReplyTargetResolver } from './ReplyTargetResolver.js';
+import { WritingStyleEngine } from '../style/WritingStyleEngine.js';
 
 export class ContextEngine {
   public static processContext(rawContext: ConversationContext): StructuredAIContext {
@@ -88,6 +89,22 @@ export class ContextEngine {
     const baseContext = ContextEngine.processContext(rawContext);
     const contactId = rawContext?.contact?.id || 'unknown';
 
+    // Asynchronously trigger style analysis update from outgoing messages in this context
+    const styleEngine = WritingStyleEngine.getInstance();
+    if (baseContext.recentMessages && baseContext.recentMessages.length > 0) {
+      styleEngine.updateFromMessages(baseContext.recentMessages).catch((err) => {
+        console.warn('[ContextEngine] Writing style update error:', err);
+      });
+    }
+
+    // Attach learned writing style profile if one exists
+    let profile = null;
+    try {
+      profile = await styleEngine.getProfile();
+    } catch { /* noop */ }
+
+    const contextWithStyle = profile ? { ...baseContext, writingStyleProfile: profile } : baseContext;
+
     // [4] Memory Retrieval with 3-second resilient timeout limit
     inspector?.startStage('[4] Memory Retrieval');
     try {
@@ -105,11 +122,11 @@ export class ContextEngine {
       const memoryContext = await Promise.race([memoryPromise, timeoutPromise]);
       if (timer) clearTimeout(timer);
       inspector?.endStage('[4] Memory Retrieval', { returnedCount: memoryContext.relevantMemories.length });
-      return { ...baseContext, memoryContext };
+      return { ...contextWithStyle, memoryContext };
     } catch (err) {
       inspector?.endStage('[4] Memory Retrieval', { error: err instanceof Error ? err.message : String(err) }, true);
       console.warn('[ContextEngine] Memory retrieval failed/timed out — continuing with base context:', err);
-      return baseContext;
+      return contextWithStyle;
     }
   }
 }
