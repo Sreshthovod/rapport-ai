@@ -32,15 +32,14 @@ export class GeminiProvider implements AIProvider {
   public async validateKey(apiKey: string): Promise<boolean> {
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: 'Ping' }] }] }),
+          method: 'GET',
         }
       );
       return res.status === 200;
-    } catch {
+    } catch (err) {
+      console.warn('[GeminiProvider] Key validation network error:', err);
       return false;
     }
   }
@@ -70,12 +69,20 @@ export class GeminiProvider implements AIProvider {
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      
+      // Log before request
+      const promptLength = systemContent.length + userContent.length;
+      console.log(`[Gemini Request] Provider: ${this.id}`);
+      console.log(`[Gemini Request] Endpoint: ${url.split('?')[0]}`);
+      console.log(`[Gemini Request] Model: ${model}`);
+      console.log(`[Gemini Request] Prompt Length: ${promptLength}`);
+
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: options?.signal,
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemContent }] },
+          systemInstruction: { parts: [{ text: systemContent }] },
           contents: [{ parts: [{ text: userContent }] }],
           generationConfig: {
             temperature,
@@ -85,9 +92,13 @@ export class GeminiProvider implements AIProvider {
       });
 
       const latencyMs = Date.now() - startTime;
+      console.log(`[Gemini Response] HTTP status: ${response.status}`);
+      console.log(`[Gemini Response] Latency: ${latencyMs}ms`);
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`[Gemini Response] Error body: ${errorText}`);
+
         let parsedMessage = errorText;
         try {
           const json = JSON.parse(errorText);
@@ -112,6 +123,8 @@ export class GeminiProvider implements AIProvider {
       }
 
       const data = await response.json();
+      console.log(`[Gemini Response] Response body: ${JSON.stringify(data)}`);
+
       const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const usageTokens = data?.usageMetadata?.totalTokenCount;
 
@@ -189,12 +202,20 @@ export class GeminiProvider implements AIProvider {
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+      
+      // Log before request
+      const promptLength = systemContent.length + userContent.length;
+      console.log(`[Gemini Request Stream] Provider: ${this.id}`);
+      console.log(`[Gemini Request Stream] Endpoint: ${url.split('?')[0]}`);
+      console.log(`[Gemini Request Stream] Model: ${model}`);
+      console.log(`[Gemini Request Stream] Prompt Length: ${promptLength}`);
+
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: options?.signal,
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemContent }] },
+          systemInstruction: { parts: [{ text: systemContent }] },
           contents: [{ parts: [{ text: userContent }] }],
           generationConfig: {
             temperature,
@@ -203,8 +224,14 @@ export class GeminiProvider implements AIProvider {
         }),
       });
 
+      const latencyMs = Date.now() - startTime;
+      console.log(`[Gemini Response Stream] HTTP status: ${response.status}`);
+      console.log(`[Gemini Response Stream] Latency: ${latencyMs}ms`);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`[Gemini Response Stream] Error body: ${errorText}`);
+
         let parsedMessage = errorText;
         try {
           const json = JSON.parse(errorText);
@@ -250,7 +277,7 @@ export class GeminiProvider implements AIProvider {
         }
       }
 
-      const latencyMs = Date.now() - startTime;
+      const finalLatencyMs = Date.now() - startTime;
       const fallbackTone = request.structuredContext?.tone || 'Friendly';
       const suggestions = SuggestionEngine.parseSuggestions(fullContent, fallbackTone);
 
@@ -262,7 +289,7 @@ export class GeminiProvider implements AIProvider {
           tone: suggestions[0]?.tone || fallbackTone,
           providerId: this.id,
           suggestions,
-          metadata: { model, latencyMs },
+          metadata: { model, latencyMs: finalLatencyMs },
         },
       };
     } catch (err) {
