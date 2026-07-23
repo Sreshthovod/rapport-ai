@@ -123,14 +123,14 @@ export class PipelineValidationTest {
     const t4Start = Date.now();
     try {
       const initialCount = await store.count('contact_bob');
-      await service.createMemory({
+      await service.upsertMemory({
         contactId: 'contact_bob',
         type: 'INTEREST',
         title: 'Hobby Interest',
         content: 'Loves playing acoustic guitar on weekends',
       });
       const countAfterFirst = await store.count('contact_bob');
-      await service.createMemory({
+      await service.upsertMemory({
         contactId: 'contact_bob',
         type: 'INTEREST',
         title: 'Hobby Interest',

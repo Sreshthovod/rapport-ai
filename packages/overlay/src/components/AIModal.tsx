@@ -13,6 +13,73 @@ export const getProviderLabel = (providerId?: string): string => {
   return providerId || 'Offline';
 };
 
+interface ErrorBoundaryProps {
+  fallbackTitle?: string;
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public override state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public override componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            padding: '16px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            borderRadius: '8px',
+            margin: '12px 0',
+            color: 'var(--rapport-text-primary)',
+            fontSize: '12.5px',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: '#ef4444', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ⚠️ {this.props.fallbackTitle || 'Rendering Failed'}
+          </div>
+          <div style={{ color: 'var(--rapport-text-secondary)', fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: '100px', overflowY: 'auto' }}>
+            {this.state.error?.message || 'Unknown error'}
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              marginTop: '8px',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              border: '1px solid var(--rapport-border)',
+              background: 'transparent',
+              color: 'var(--rapport-text-primary)',
+              fontSize: '11px',
+              cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export interface AIModalProps {
   visible: boolean;
   loading: boolean;
@@ -26,6 +93,9 @@ export interface AIModalProps {
   onClose: () => void;
   /** Dynamic copilot recommendation tip from CopilotEngine */
   copilotTip?: string;
+  anchorTop?: number;
+  activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings';
+  onTabChange: (tab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings') => void;
 }
 
 const getToneColor = (tone: string): { bg: string; border: string; text: string } => {
@@ -45,6 +115,33 @@ const getToneColor = (tone: string): { bg: string; border: string; text: string 
   return { bg: 'rgba(0, 168, 132, 0.15)', border: 'rgba(0, 168, 132, 0.3)', text: 'var(--rapport-accent, #00a884)' };
 };
 
+const getInsightCard = (contextSignals: any, reasoning: string): { icon: string; text: string } => {
+  const stage = (contextSignals?.stage || '').toLowerCase();
+  const emotion = (contextSignals?.primaryEmotion || '').toLowerCase();
+  const sentiment = (contextSignals?.sentiment || '').toLowerCase();
+
+  if (stage.includes('planning') || stage.includes('schedule')) {
+    return { icon: '📅', text: 'They are making plans.' };
+  }
+  if (emotion.includes('frustrated') || emotion.includes('angry') || sentiment === 'negative') {
+    return { icon: '⚠️', text: 'The conversation health is strained.' };
+  }
+  if (emotion.includes('curious') || emotion.includes('inquiry')) {
+    return { icon: '💡', text: 'They are asking for details.' };
+  }
+  if (sentiment === 'positive' || emotion.includes('happy')) {
+    return { icon: '😊', text: 'The conversation is friendly.' };
+  }
+  if (reasoning) {
+    const cleanReason = reasoning.replace(/^Reasoning:\s*/i, '');
+    const firstSentence = cleanReason.split(/[.!?]/)[0];
+    if (firstSentence && firstSentence.length < 60) {
+      return { icon: '💡', text: firstSentence + '.' };
+    }
+  }
+  return { icon: '🤖', text: 'AI is ready with suggested replies.' };
+};
+
 export const AIModal: React.FC<AIModalProps> = ({
   visible,
   loading,
@@ -57,20 +154,22 @@ export const AIModal: React.FC<AIModalProps> = ({
   onRegenerate,
   onClose,
   copilotTip,
+  anchorTop,
+  activeTab,
+  onTabChange,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('All');
-  const [showSettings, setShowSettings] = useState<boolean>(Boolean(initialShowSettings));
   const [showDevPanel, setShowDevPanel] = useState<boolean>(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [intelCollapsed, setIntelCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
-    if (initialShowSettings !== undefined) {
-      setShowSettings(initialShowSettings);
+    if (initialShowSettings) {
+      onTabChange('Settings');
     }
-  }, [initialShowSettings]);
+  }, [initialShowSettings, onTabChange]);
 
   // Dragging state
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -82,24 +181,8 @@ export const AIModal: React.FC<AIModalProps> = ({
     posY: 0,
   });
 
-  // Handle Keyboard Shortcuts (Esc, Cmd/Ctrl+Enter, Tab)
-  useEffect(() => {
-    if (!visible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        if (onRegenerate && !loading) onRegenerate();
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [visible, loading, onRegenerate, onClose]);
 
-  if (!visible) return null;
+
 
   // Handle Dragging
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -182,6 +265,76 @@ export const AIModal: React.FC<AIModalProps> = ({
     return bPin - aPin;
   });
 
+  const handleRewrite = async (styleKey: 'short-direct' | 'detailed' | 'professional') => {
+    try {
+      await SettingsManager.getInstance().updateSettings({ writingStyle: styleKey });
+      if (onRegenerate) {
+        onRegenerate();
+      }
+    } catch (err) {
+      console.error('Failed to update writing style for rewrite:', err);
+    }
+  };
+
+  const actionBtnStyle: React.CSSProperties = {
+    flex: 1,
+    minWidth: '70px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    padding: '8px 10px',
+    borderRadius: '6px',
+    background: 'transparent',
+    border: '1px solid var(--rapport-border)',
+    color: 'var(--rapport-text-primary)',
+    fontSize: '11px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  };
+
+  // Handle Keyboard Shortcuts (Esc, Cmd/Ctrl+Enter, Tab, Arrow keys)
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        if (onRegenerate && !loading) onRegenerate();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        if (activeTab === 'AI') {
+          setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
+        } else {
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const idx = tabOrder.indexOf(activeTab);
+          onTabChange(tabOrder[(idx + 1) % tabOrder.length]);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (activeTab === 'AI') {
+          setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
+        } else {
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const idx = tabOrder.indexOf(activeTab);
+          onTabChange(tabOrder[(idx + 1) % tabOrder.length]);
+        }
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        if (activeTab === 'AI') {
+          setSelectedIndex((prev) => (prev - 1 + suggestions.length) % (suggestions.length || 1));
+        } else {
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const idx = tabOrder.indexOf(activeTab);
+          onTabChange(tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [visible, loading, onRegenerate, onClose, suggestions.length, activeTab, onTabChange]);
+
   // Extract Metadata Badges & Live Provider Info
   const activeSettings = SettingsManager.getInstance().getSettings();
   const metadata = data?.metadata || {};
@@ -191,21 +344,42 @@ export const AIModal: React.FC<AIModalProps> = ({
   const latencyMs = metadata.latencyMs ? `${metadata.latencyMs}ms` : null;
   const contextSignals = (metadata.contextSignals as any) || {};
 
+  // Calculate smart up/down positioning
+  const modalHeight = 350; 
+  const spaceBelow = typeof window !== 'undefined' ? window.innerHeight - (anchorTop || 0) : 0;
+  const growUpward = spaceBelow < modalHeight + 60;
+
+  const positioningStyle: React.CSSProperties = growUpward
+    ? {
+        position: 'absolute',
+        bottom: '100%',
+        marginBottom: '10px',
+        left: 0,
+      }
+    : {
+        position: 'absolute',
+        top: '100%',
+        marginTop: '10px',
+        left: 0,
+      };
+
+  const activeSuggestion = suggestions[selectedIndex];
+
   return (
     <div
-      className="rapport-animate-enter"
+      className="rapport-spring-enter"
       style={{
-        marginTop: '8px',
+        ...positioningStyle,
         width: '420px',
-        maxHeight: 'min(680px, 88vh)',
+        height: '440px',
         transform: `translate(${position.x}px, ${position.y}px)`,
-        display: 'flex',
+        display: visible ? 'flex' : 'none',
         flexDirection: 'column',
         background: 'var(--rapport-bg)',
         border: '1px solid var(--rapport-border)',
         borderRadius: 'var(--rapport-radius-lg)',
         boxShadow: 'var(--rapport-shadow)',
-        padding: '18px',
+        padding: '16px',
         fontFamily: 'var(--rapport-font-family)',
         color: 'var(--rapport-text-primary)',
         backdropFilter: 'var(--rapport-blur)',
@@ -214,6 +388,25 @@ export const AIModal: React.FC<AIModalProps> = ({
         zIndex: 99999,
       }}
     >
+      <style>{`
+        @keyframes rapportSpringEnter {
+          from {
+            opacity: 0;
+            transform: scale(0.93) translateY(8px);
+            filter: blur(2px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0);
+          }
+        }
+        .rapport-spring-enter {
+          animation: rapportSpringEnter 210ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          will-change: transform, opacity, filter;
+        }
+      `}</style>
+
       {/* Premium Header — Draggable */}
       <div
         onMouseDown={handleMouseDown}
@@ -221,8 +414,8 @@ export const AIModal: React.FC<AIModalProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '14px',
-          paddingBottom: '10px',
+          marginBottom: '8px',
+          paddingBottom: '8px',
           borderBottom: '1px solid var(--rapport-border)',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
@@ -240,8 +433,8 @@ export const AIModal: React.FC<AIModalProps> = ({
               transition: 'all 0.3s ease',
             }}
           />
-          <span style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '-0.02em' }}>
-            Rapport AI
+          <span style={{ fontWeight: 700, fontSize: '13px', letterSpacing: '-0.02em' }}>
+            Rapport Workspace
           </span>
         </div>
 
@@ -295,500 +488,476 @@ export const AIModal: React.FC<AIModalProps> = ({
               padding: '2px 4px',
               lineHeight: 1,
             }}
-            title="Close panel (Esc)"
+            title="Close workspace (Esc)"
           >
             ✕
           </button>
         </div>
       </div>
 
-      {/* Embedded Settings Modal Overlay */}
-      {showSettings && (
-        <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-          <SettingsView
-            onClose={() => {
-              setShowSettings(false);
-              if (initialShowSettings) {
-                onClose();
-              }
-            }}
-          />
-        </div>
-      )}
-
-      {!showSettings && (
-        <>
-          {/* AI Copilot Badge Panel (Elegant inline tags) */}
-          <div
-            style={{
-              display: 'flex',
-              gap: '6px',
-              flexWrap: 'wrap',
-              marginBottom: '12px',
-              fontSize: '10.5px',
-              fontWeight: 500,
-              color: 'var(--rapport-text-secondary)',
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
-              🤖 {displayProviderLabel} ({modelName})
-            </span>
-            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
-              💬 Mode: {activeSettings.conversationMode}
-            </span>
-            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
-              🎭 Style: {activeSettings.suggestionPersonality}
-            </span>
-            {contextSignals.preferredLanguage && (
-              <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
-                🌐 Lang: {contextSignals.preferredLanguage}
-              </span>
-            )}
-            {latencyMs && (
-              <span style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                ⚡ {latencyMs}
-              </span>
-            )}
-          </div>
-
-          {/* Proactive Copilot Recommendation Tip */}
-          {copilotTip && (
-            <div
+      {/* Workspace Tabs Navigation Bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--rapport-border)', marginBottom: '12px', flexShrink: 0 }}>
+        {(['AI', 'Tone', 'Strategy', 'Memory', 'Settings'] as const).map((tab) => {
+          const isSelected = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => onTabChange(tab)}
               style={{
-                background: 'var(--rapport-accent-muted)',
-                border: '1px solid var(--rapport-border)',
-                borderRadius: 'var(--rapport-radius)',
-                padding: '8px 12px',
-                marginBottom: '12px',
-                fontSize: '11.5px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                flexShrink: 0,
-                color: 'var(--rapport-text-primary)',
+                flex: 1,
+                padding: '6px 4px',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: isSelected ? '2px solid var(--rapport-accent)' : '2px solid transparent',
+                color: isSelected ? 'var(--rapport-text-primary)' : 'var(--rapport-text-secondary)',
+                fontSize: '11px',
+                fontWeight: isSelected ? 700 : 500,
+                cursor: 'pointer',
+                textAlign: 'center',
+                transition: 'all 0.15s ease',
               }}
             >
-              <span>💡</span>
-              <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Copilot:</span>
-              <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
-                {copilotTip}
-              </span>
-            </div>
-          )}
+              {tab}
+            </button>
+          );
+        })}
+      </div>
 
-          {/* Category Filter Tabs */}
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', overflowX: 'auto', flexShrink: 0, paddingBottom: '2px' }}>
-            {['All', 'Quick', 'Natural', 'Professional', 'Funny', 'Flirty'].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategoryFilter(cat)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '16px',
-                  border: activeCategoryFilter === cat ? '1px solid var(--rapport-accent)' : '1px solid var(--rapport-border)',
-                  background: activeCategoryFilter === cat ? 'var(--rapport-accent-muted)' : 'transparent',
-                  color: activeCategoryFilter === cat ? 'var(--rapport-accent)' : 'var(--rapport-text-secondary)',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all var(--rapport-transition-fast)',
-                }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {/* Scrollable Body List */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              paddingRight: '2px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-            }}
-          >
-            {/* Real-Time Streaming Text Display with Caret */}
-            {loading && streamingText && (
-              <div
-                style={{
-                  padding: '14px',
-                  background: 'var(--rapport-bg-hover)',
-                  border: '1px solid var(--rapport-border)',
-                  borderRadius: 'var(--rapport-radius)',
-                  fontSize: '13px',
-                  lineHeight: '1.5',
-                  color: 'var(--rapport-text-primary)',
-                }}
-              >
-                <div style={{ fontSize: '10px', color: 'var(--rapport-accent)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
-                  ⚡ Streaming Suggestion...
+      {/* Dynamic Tab Body Container */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          paddingRight: '2px',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {activeTab === 'AI' && (
+          <ErrorBoundary fallbackTitle="AI Panel Failed">
+            <>
+              {loading && !streamingText && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '16px 0' }}>
+                  <div className="rapport-shimmer" style={{ width: '80px', height: '18px', borderRadius: '4px' }} />
+                  <div className="rapport-shimmer" style={{ width: '100%', height: '70px', borderRadius: '8px' }} />
+                  <div className="rapport-shimmer" style={{ width: '60%', height: '14px', borderRadius: '4px' }} />
                 </div>
-                <span>"{streamingText}"</span>
-                <span className="rapport-caret" style={{ marginLeft: '2px' }}></span>
-              </div>
-            )}
+              )}
 
-            {/* Shimmer Skeleton Loading State */}
-            {loading && !streamingText && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '8px 0' }}>
-                {[1, 2, 3].map((val) => (
-                  <div
-                    key={val}
-                    style={{
-                      height: '80px',
-                      borderRadius: 'var(--rapport-radius)',
-                      border: '1px solid var(--rapport-border)',
-                      padding: '12px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div className="rapport-shimmer" style={{ width: '60px', height: '14px', borderRadius: '4px' }} />
-                      <div className="rapport-shimmer" style={{ width: '40px', height: '14px', borderRadius: '4px' }} />
-                    </div>
-                    <div className="rapport-shimmer" style={{ width: '85%', height: '16px', borderRadius: '4px' }} />
-                    <div className="rapport-shimmer" style={{ width: '50%', height: '12px', borderRadius: '4px' }} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Error State */}
-            {!loading && error && (
-              <div style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--rapport-radius)' }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)' }}>{error}</div>
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!loading && !error && (!data || suggestions.length === 0) && (
-              <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--rapport-text-tertiary)', fontSize: '12.5px' }}>
-                No active chat thread selected. Open a conversation in WhatsApp to receive suggestions.
-              </div>
-            )}
-
-            {/* Contact Intelligence Card */}
-            {!loading && !error && data && contextSignals.relationshipType && (
-              <div style={{
-                background: 'var(--rapport-bg-hover)',
-                border: '1px solid var(--rapport-border)',
-                borderRadius: 'var(--rapport-radius)',
-                overflow: 'hidden',
-                transition: 'all var(--rapport-transition-normal)',
-              }}>
-                <div
-                  onClick={() => setIntelCollapsed(!intelCollapsed)}
-                  style={{
-                    padding: '10px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    background: 'rgba(255, 255, 255, 0.01)',
-                    userSelect: 'none',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 700, color: 'var(--rapport-accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    👤 Contact Profile: {contextSignals.relationshipType}
-                  </div>
-                  <span style={{ fontSize: '10px', color: 'var(--rapport-text-secondary)', transform: intelCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', display: 'inline-block', transition: 'transform 0.15s ease' }}>▼</span>
-                </div>
-
-                {!intelCollapsed && (
-                  <div style={{
-                    padding: '12px 14px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    borderTop: '1px solid var(--rapport-border)',
-                    fontSize: '12px',
-                    color: 'var(--rapport-text-secondary)',
-                  }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <div>
-                        Depth: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.conversationDepth >= 70 ? 'Deep' : contextSignals.conversationDepth >= 40 ? 'Medium' : 'Casual'}</strong> ({contextSignals.conversationDepth}/100)
-                      </div>
-                      <div>
-                        Language: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.preferredLanguage || 'English'}</strong>
-                      </div>
-                      <div>
-                        Frequency: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.messagesPerDay > 20 ? '⚡ High' : contextSignals.messagesPerDay > 5 ? 'Moderate' : 'Low'}</strong> ({contextSignals.messagesPerDay || 0} msgs/day)
-                      </div>
-                      <div>
-                        Emojis: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.emojiUsage === 'frequent' ? 'Frequent' : contextSignals.emojiUsage === 'rare' ? 'Rare' : 'None'}</strong>
-                      </div>
-                    </div>
-
-                    {contextSignals.commonTopics && contextSignals.commonTopics.length > 0 && (
-                      <div style={{ borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '4px' }}>
-                        <div style={{ color: 'var(--rapport-text-tertiary)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>Topics Discussed</div>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {contextSignals.commonTopics.map((topic: string, i: number) => (
-                            <span key={i} style={{
-                              fontSize: '10px',
-                              background: 'var(--rapport-bg-input)',
-                              border: '1px solid var(--rapport-border)',
-                              borderRadius: '4px',
-                              padding: '2px 6px',
-                              color: 'var(--rapport-text-secondary)',
-                            }}>{topic}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ChatGPT-Style Suggestion Cards */}
-            {!loading && !error && suggestions.length > 0 && (
-              suggestions.map((sug, idx) => {
-                const toneStyle = getToneColor(sug.tone);
-                const isCopied = copiedId === sug.id;
-                const isPinned = pinnedIds.has(sug.id);
-                const isSelected = selectedIndex === idx;
-
-                return (
-                  <div
-                    key={sug.id}
-                    onClick={() => setSelectedIndex(idx)}
-                    style={{
-                      background: isSelected ? 'var(--rapport-bg-hover)' : 'rgba(255, 255, 255, 0.01)',
-                      border: isSelected ? '1px solid var(--rapport-accent)' : '1px solid var(--rapport-border)',
-                      borderRadius: 'var(--rapport-radius)',
-                      padding: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px',
-                      transition: 'all var(--rapport-transition-fast)',
-                      cursor: 'pointer',
-                      position: 'relative',
-                    }}
-                  >
-                    {/* Header bar */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {sug.category && (
-                          <span style={{ fontSize: '10.5px', padding: '2px 7px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', color: 'var(--rapport-text-secondary)', fontWeight: 600 }}>
-                            {sug.category}
-                          </span>
-                        )}
-                        <span
-                          style={{
-                            padding: '2px 7px',
-                            background: toneStyle.bg,
-                            border: `1px solid ${toneStyle.border}`,
-                            borderRadius: '12px',
-                            color: toneStyle.text,
-                            fontSize: '10.5px',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {sug.tone}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)' }}>
-                          {Math.round((sug.confidence || 0.9) * 100)}% match
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); togglePin(sug.id); }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            color: isPinned ? '#f59e0b' : 'var(--rapport-text-tertiary)',
-                          }}
-                          title={isPinned ? 'Unpin suggestion' : 'Pin suggestion to top'}
-                        >
-                          📌
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Faux ChatGPT Content Block */}
-                    <div
-                      style={{
-                        fontSize: '13px',
-                        lineHeight: '1.5',
-                        color: 'var(--rapport-text-primary)',
-                        background: 'var(--rapport-bg-input)',
-                        padding: '10px 12px',
-                        borderRadius: 'var(--rapport-radius-sm)',
-                        border: '1px solid var(--rapport-border)',
-                      }}
-                    >
-                      "{sug.text}"
-                    </div>
-
-                    {sug.explanation && (
-                      <div style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)', fontStyle: 'italic', paddingLeft: '4px' }}>
-                        {sug.explanation}
-                      </div>
-                    )}
-
-                    {/* Action Toolbar (Shorter, Longer, Rewrite, Copy, Insert) */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '2px' }}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {/* Progressive refinement modifiers */}
-                        {['Shorter', 'Longer', 'Rewrite'].map((mode) => (
-                          <button
-                            key={mode}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Mock modification by updating suggestion text or copying
-                              const updatedText = mode === 'Shorter' 
-                                ? sug.text.split(/[.,!?]/)[0] + '.'
-                                : mode === 'Longer'
-                                ? sug.text + ' Hope you are doing well and everything is smooth!'
-                                : 'Hey! ' + sug.text;
-                              sug.text = updatedText;
-                              if (onInsert) onInsert(updatedText);
-                            }}
-                            style={{
-                              padding: '2px 6px',
-                              background: 'transparent',
-                              border: '1px solid var(--rapport-border)',
-                              borderRadius: '4px',
-                              color: 'var(--rapport-text-secondary)',
-                              fontSize: '10px',
-                              cursor: 'pointer',
-                              fontWeight: 500,
-                            }}
-                          >
-                            {mode}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleCopy(sug.text, sug.id); }}
-                          style={{
-                            padding: '4px 10px',
-                            background: isCopied ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                            border: `1px solid ${isCopied ? '#10b981' : 'var(--rapport-border)'}`,
-                            borderRadius: 'var(--rapport-radius-sm)',
-                            color: isCopied ? '#10b981' : 'var(--rapport-text-primary)',
-                            fontSize: '11px',
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                          }}
-                        >
-                          {isCopied ? 'Copied! ✓' : '📋 Copy'}
-                        </button>
-                        {onInsert && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onInsert(sug.text); }}
-                            style={{
-                              padding: '4px 10px',
-                              background: 'var(--rapport-accent)',
-                              border: 'none',
-                              borderRadius: 'var(--rapport-radius-sm)',
-                              color: '#ffffff',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Insert Draft ↵
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Developer Diagnostics Panel */}
-          {showDevPanel && (
-            (() => {
-              const diag = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
-                ? AIPipelineInspector.getInstance().getDiagnosticsSummary()
-                : {
-                    currentStage: 'Idle',
-                    totalDurationMs: 0,
-                    success: true,
-                    provider: 'N/A',
-                    model: 'N/A',
-                    promptLength: 0,
-                    stageTimings: [],
-                  };
-              const systemPromptLen = compiledPrompt?.systemPrompt?.length || 0;
-              const userPromptLen = compiledPrompt?.userPrompt?.length || 0;
-              const totalPromptLen = systemPromptLen + userPromptLen || diag.promptLength;
-
-              return (
+              {loading && streamingText && (
                 <div
                   style={{
-                    marginTop: '10px',
-                    padding: '12px',
+                    padding: '14px',
                     background: 'var(--rapport-bg-hover)',
                     border: '1px solid var(--rapport-border)',
                     borderRadius: 'var(--rapport-radius)',
-                    fontSize: '11px',
-                    maxHeight: '180px',
-                    overflowY: 'auto',
-                    fontFamily: 'monospace',
+                    fontSize: '13px',
+                    lineHeight: '1.5',
+                    color: 'var(--rapport-text-primary)',
+                    marginBottom: '12px',
+                  }}
+                >
+                  <div style={{ fontSize: '10px', color: 'var(--rapport-accent)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
+                    ⚡ Streaming Suggestion...
+                  </div>
+                  <span>"{streamingText}"</span>
+                  <span className="rapport-caret" style={{ marginLeft: '2px' }}></span>
+                </div>
+              )}
+
+              {!loading && error && (
+                <div style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--rapport-radius)', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)' }}>{error}</div>
+                </div>
+              )}
+
+              {!loading && !error && (!data || suggestions.length === 0) && (
+                <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--rapport-text-tertiary)', fontSize: '12.5px' }}>
+                  No suggestions available. Type something to get started.
+                </div>
+              )}
+
+              {!loading && !error && suggestions.length > 0 && (
+                <>
+                  {/* Concise Insight Card */}
+                  {(() => {
+                    const insight = getInsightCard(contextSignals, data?.reasoning || '');
+                    return (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 12px',
+                          background: 'var(--rapport-bg-hover)',
+                          border: '1px solid var(--rapport-border)',
+                          borderRadius: 'var(--rapport-radius)',
+                          fontSize: '12px',
+                          color: 'var(--rapport-text-primary)',
+                          marginBottom: '12px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span>{insight.icon}</span>
+                        <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Insight:</span>
+                        <span>{insight.text}</span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Segmented Selector for Suggestions */}
+                  <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', overflowX: 'auto', paddingBottom: '2px', flexShrink: 0 }}>
+                    {suggestions.map((sug, idx) => {
+                      const isSelected = selectedIndex === idx;
+                      return (
+                        <button
+                          key={sug.id}
+                          onClick={() => setSelectedIndex(idx)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '16px',
+                            border: isSelected ? '1px solid var(--rapport-accent)' : '1px solid var(--rapport-border)',
+                            background: isSelected ? 'var(--rapport-accent-muted)' : 'transparent',
+                            color: isSelected ? 'var(--rapport-accent)' : 'var(--rapport-text-secondary)',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all var(--rapport-transition-fast)',
+                          }}
+                        >
+                          {pinnedIds.has(sug.id) && '📌 '}
+                          {sug.tone || `Option ${idx + 1}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Primary Focused Card */}
+                  {activeSuggestion && (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        background: 'var(--rapport-bg-hover)',
+                        border: '1px solid var(--rapport-border)',
+                        borderRadius: 'var(--rapport-radius)',
+                        padding: '14px',
+                        marginBottom: '12px',
+                        minHeight: '80px',
+                        maxHeight: '180px',
+                        overflowY: 'auto',
+                        position: 'relative',
+                      }}
+                    >
+                      {/* Badges row */}
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+                        <span
+                          style={{
+                            fontSize: '9.5px',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: 'var(--rapport-accent-muted)',
+                            color: 'var(--rapport-accent)',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {activeSuggestion.tone || 'Suggested'}
+                        </span>
+                        {activeSuggestion.confidence && activeSuggestion.confidence > 0.8 && (
+                          <span
+                            style={{
+                              fontSize: '9.5px',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              background: 'rgba(16, 185, 129, 0.1)',
+                              color: '#10b981',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Best Match
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Text */}
+                      <div style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--rapport-text-primary)', whiteSpace: 'pre-wrap' }}>
+                        "{activeSuggestion.text}"
+                      </div>
+
+                      {activeSuggestion.explanation && (
+                        <div style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)', fontStyle: 'italic', marginTop: '4px' }}>
+                          {activeSuggestion.explanation}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick Action Bar Row */}
+                  {activeSuggestion && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', width: '100%', marginBottom: '6px' }}>
+                      <button
+                        onClick={() => onInsert && onInsert(activeSuggestion.text)}
+                        style={{
+                          flex: 1.2,
+                          minWidth: '70px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          background: 'var(--rapport-accent)',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'background 0.2s ease',
+                        }}
+                      >
+                        📥 Insert
+                      </button>
+                      <button
+                        onClick={() => handleCopy(activeSuggestion.text, activeSuggestion.id)}
+                        style={actionBtnStyle}
+                      >
+                        📋 {copiedId === activeSuggestion.id ? 'Copied' : 'Copy'}
+                      </button>
+                      <button
+                        onClick={() => togglePin(activeSuggestion.id)}
+                        style={actionBtnStyle}
+                      >
+                        ⭐ {pinnedIds.has(activeSuggestion.id) ? 'Unstar' : 'Star'}
+                      </button>
+                      <button
+                        onClick={() => handleRewrite('short-direct')}
+                        style={actionBtnStyle}
+                        title="Make suggestion shorter"
+                      >
+                        🔎 Shorter
+                      </button>
+                      <button
+                        onClick={() => handleRewrite('detailed')}
+                        style={actionBtnStyle}
+                        title="Make suggestion longer"
+                      >
+                        📢 Longer
+                      </button>
+                      <button
+                        onClick={() => handleRewrite('professional')}
+                        style={actionBtnStyle}
+                        title="Rewrite professional"
+                      >
+                        💼 Professional
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Copilot tip (rendered underneath the active suggestions as an advice card if present) */}
+              {!loading && !error && copilotTip && (
+                <div
+                  style={{
+                    background: 'var(--rapport-accent-muted)',
+                    border: '1px solid var(--rapport-border)',
+                    borderRadius: 'var(--rapport-radius)',
+                    padding: '8px 12px',
+                    marginTop: '6px',
+                    fontSize: '11.5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     flexShrink: 0,
                     color: 'var(--rapport-text-primary)',
                   }}
                 >
-                  <div style={{ color: 'var(--rapport-accent)', fontWeight: 'bold', marginBottom: '8px' }}>
-                    🛠️ Pipeline Stage Trace
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Stage:</span> {diag.currentStage}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Latency:</span> {diag.totalDurationMs ? `${diag.totalDurationMs}ms` : (latencyMs ? `${latencyMs}ms` : 'In Progress')}</div>
-                    <div>
-                      <span style={{ color: 'var(--rapport-text-secondary)' }}>Status:</span>{' '}
-                      <span style={{ color: error || !diag.success ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-                        {error || !diag.success ? 'Failed' : 'Success'}
-                      </span>
-                    </div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Provider:</span> {displayProviderLabel}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Model:</span> {modelName}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prompt:</span> {totalPromptLen} chars</div>
-                    
-                    {/* Conversation Intelligence 2.0 Diagnostics */}
-                    <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--rapport-border)', paddingTop: '6px', marginTop: '4px', fontWeight: 600, color: 'var(--rapport-accent)' }}>Conversation Analytics v2:</div>
-                    <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--rapport-text-secondary)' }}>Goal:</span> {contextSignals.conversationGoal || 'N/A'}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prev Topic:</span> {contextSignals.previousTopic || 'None'}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Health Score:</span> <strong style={{ color: 'var(--rapport-accent)' }}>{contextSignals.conversationHealthScore !== undefined ? `${contextSignals.conversationHealthScore}/100` : 'N/A'}</strong></div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Sentiment:</span> {contextSignals.sentiment ? contextSignals.sentiment.toUpperCase() : 'N/A'}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Energy Level:</span> {contextSignals.energyLevel ? contextSignals.energyLevel.toUpperCase() : 'N/A'}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Dominant:</span> {contextSignals.dominantParticipant || 'N/A'}</div>
-                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Balance:</span> {contextSignals.speakingBalance || 'N/A'}</div>
-                  </div>
-
-                  {diag.stageTimings.map((st, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid var(--rapport-border)' }}>
-                      <span>{st.stage}</span>
-                      <span style={{ color: '#10b981', fontWeight: 600 }}>{st.durationMs}ms</span>
-                    </div>
-                  ))}
+                  <span>💡</span>
+                  <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Tip:</span>
+                  <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
+                    {copilotTip}
+                  </span>
                 </div>
-              );
-            })()
-          )}
-        </>
+              )}
+            </>
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'Tone' && (
+          <ErrorBoundary fallbackTitle="Tone Panel Failed">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>Detected Mood Calibration</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)', lineHeight: 1.4 }}>
+                Calibration values determine outgoing style options based on the contact's interaction signals.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px' }}>
+                  Mood: <strong style={{ color: 'var(--rapport-accent)' }}>{contextSignals.primaryEmotion || 'Neutral'}</strong>
+                </div>
+                <div style={{ fontSize: '12px' }}>
+                  Sentiment: <strong style={{ color: 'var(--rapport-accent)' }}>{contextSignals.sentiment || 'Positive'}</strong>
+                </div>
+                {['Friendly', 'Professional', 'Casual', 'Direct'].map((toneName) => {
+                  let pct = 25;
+                  if (toneName === 'Friendly' && contextSignals.sentiment === 'positive') pct = 60;
+                  if (toneName === 'Casual' && contextSignals.relationshipType === 'casual') pct = 70;
+                  if (toneName === 'Professional' && contextSignals.relationshipType === 'professional') pct = 80;
+                  return (
+                    <div key={toneName} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px' }}>
+                        <span>{toneName}</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div style={{ width: '100%', height: '6px', background: 'var(--rapport-border)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--rapport-accent)' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'Strategy' && (
+          <ErrorBoundary fallbackTitle="Strategy Panel Failed">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>Strategy Orchestrator</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)', lineHeight: 1.4 }}>
+                AI maps relationship goals and speaking balance to coordinate suggestions.
+              </div>
+              <div style={{ padding: '12px', background: 'var(--rapport-bg-hover)', borderRadius: '8px', border: '1px solid var(--rapport-border)', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--rapport-text-secondary)' }}>Active Conversation Stage:</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--rapport-accent)' }}>
+                  🚀 {contextSignals.stage || 'General Dialogue'}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--rapport-text-secondary)', borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '4px' }}>Target Goal:</div>
+                <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                  🎯 {compiledPrompt?.goal || 'Build Connection'}
+                </div>
+                {contextSignals.dominantParticipant && (
+                  <div style={{ fontSize: '12px', color: 'var(--rapport-text-secondary)', borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '4px' }}>
+                    Speaking Balance: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.speakingBalance || 'Equal'}</strong> (Dominant: {contextSignals.dominantParticipant})
+                  </div>
+                )}
+              </div>
+            </div>
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'Memory' && (
+          <ErrorBoundary fallbackTitle="Memory Panel Failed">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600 }}>Memory Index</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)', lineHeight: 1.4 }}>
+                Rapport's Memory Engine automatically indexes relational context and facts in the background.
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px', maxHeight: '220px' }}>
+                {compiledPrompt?.contextSnapshot?.relationshipType ? (
+                  <div style={{ padding: '10px', background: 'var(--rapport-bg-hover)', borderRadius: '6px', border: '1px solid var(--rapport-border)', fontSize: '12px' }}>
+                    👤 <strong>Relationship:</strong> {compiledPrompt.contextSnapshot.relationshipType}
+                  </div>
+                ) : null}
+                {data && data.reasoning ? (
+                  <div style={{ padding: '10px', background: 'var(--rapport-bg-hover)', borderRadius: '6px', border: '1px solid var(--rapport-border)', fontSize: '12px', lineHeight: 1.4 }}>
+                    🧠 <strong>Reasoning context:</strong> {data.reasoning.replace(/^Reasoning:\s*/i, '')}
+                  </div>
+                ) : (
+                  <div style={{ padding: '24px', textAlign: 'center', color: 'var(--rapport-text-tertiary)', fontSize: '12px', background: 'var(--rapport-bg-hover)', borderRadius: '8px', border: '1px dashed var(--rapport-border)' }}>
+                    No memories indexed for this conversation yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          </ErrorBoundary>
+        )}
+
+        {activeTab === 'Settings' && (
+          <ErrorBoundary fallbackTitle="Settings Panel Failed">
+            <SettingsView
+              onClose={onClose}
+              mode="workspace"
+            />
+          </ErrorBoundary>
+        )}
+      </div>
+
+      {/* Developer Diagnostics Panel */}
+      {showDevPanel && activeTab === 'AI' && (
+        (() => {
+          const diag = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+            ? AIPipelineInspector.getInstance().getDiagnosticsSummary()
+            : {
+                currentStage: 'Idle',
+                totalDurationMs: 0,
+                success: true,
+                provider: 'N/A',
+                model: 'N/A',
+                promptLength: 0,
+                stageTimings: [],
+              };
+          const systemPromptLen = compiledPrompt?.systemPrompt?.length || 0;
+          const userPromptLen = compiledPrompt?.userPrompt?.length || 0;
+          const totalPromptLen = systemPromptLen + userPromptLen || diag.promptLength;
+
+          return (
+            <div
+              style={{
+                marginTop: '10px',
+                padding: '12px',
+                background: 'var(--rapport-bg-hover)',
+                border: '1px solid var(--rapport-border)',
+                borderRadius: 'var(--rapport-radius)',
+                fontSize: '11px',
+                maxHeight: '120px',
+                overflowY: 'auto',
+                fontFamily: 'monospace',
+                flexShrink: 0,
+                color: 'var(--rapport-text-primary)',
+              }}
+            >
+              <div style={{ color: 'var(--rapport-accent)', fontWeight: 'bold', marginBottom: '8px' }}>
+                🛠️ Pipeline Stage Trace
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Stage:</span> {diag.currentStage}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Latency:</span> {diag.totalDurationMs ? `${diag.totalDurationMs}ms` : (latencyMs ? `${latencyMs}ms` : 'In Progress')}</div>
+                <div>
+                  <span style={{ color: 'var(--rapport-text-secondary)' }}>Status:</span>{' '}
+                  <span style={{ color: error || !diag.success ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                    {error || !diag.success ? 'Failed' : 'Success'}
+                  </span>
+                </div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Provider:</span> {displayProviderLabel}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Model:</span> {modelName}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prompt:</span> {totalPromptLen} chars</div>
+                
+                <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--rapport-border)', paddingTop: '6px', marginTop: '4px', fontWeight: 600, color: 'var(--rapport-accent)' }}>Conversation Analytics v2:</div>
+                <div style={{ gridColumn: 'span 2' }}><span style={{ color: 'var(--rapport-text-secondary)' }}>Goal:</span> {contextSignals.conversationGoal || 'N/A'}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prev Topic:</span> {contextSignals.previousTopic || 'None'}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Health Score:</span> <strong style={{ color: 'var(--rapport-accent)' }}>{contextSignals.conversationHealthScore !== undefined ? `${contextSignals.conversationHealthScore}/100` : 'N/A'}</strong></div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Sentiment:</span> {contextSignals.sentiment ? contextSignals.sentiment.toUpperCase() : 'N/A'}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Energy Level:</span> {contextSignals.energyLevel ? contextSignals.energyLevel.toUpperCase() : 'N/A'}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Dominant:</span> {contextSignals.dominantParticipant || 'N/A'}</div>
+                <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Balance:</span> {contextSignals.speakingBalance || 'N/A'}</div>
+              </div>
+
+              {diag.stageTimings.map((st, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid var(--rapport-border)' }}>
+                  <span>{st.stage}</span>
+                  <span style={{ color: '#10b981', fontWeight: 600 }}>{st.durationMs}ms</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );

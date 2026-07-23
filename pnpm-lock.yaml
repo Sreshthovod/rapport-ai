@@ -38,6 +38,9 @@ importers:
       '@rapport/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      '@rapport/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@rapport/shared':
         specifier: workspace:*
         version: link:../../packages/shared

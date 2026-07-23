@@ -25,8 +25,9 @@ export class OverlayManager {
   private customPosition: { top: number; left: number } | null = null;
   private anchoredPosition: PositionCoordinates = { top: 0, left: 0, width: 0, visible: false };
 
-  // AI Modal States
-  private aiModalVisible: boolean = false;
+  // Unified Workspace States
+  private workspaceVisible: boolean = false;
+  private activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings' = 'AI';
   private aiModalLoading: boolean = false;
   private aiModalShowSettings: boolean = false;
   private streamingText: string = '';
@@ -77,20 +78,20 @@ export class OverlayManager {
 
   public setCompiledPrompt(spec: CompiledPromptSpec | null): void {
     this.compiledPrompt = spec;
-    if (this.aiModalVisible) this.render();
+    if (this.workspaceVisible) this.render();
   }
 
   /** Set a live copilot tip to display inside the AI modal. Pass undefined to hide the chip. */
   public setCopilotTip(tip: string | undefined): void {
     this.aiModalCopilotTip = tip;
-    if (this.aiModalVisible) {
+    if (this.workspaceVisible) {
       this.render();
     }
   }
 
   public openAIModal(): void {
-    this.aiModalVisible = true;
-    this.aiModalShowSettings = false;
+    this.workspaceVisible = true;
+    this.activeTab = 'AI';
     if (this.onAIClickCallback) {
       this.onAIClickCallback();
     } else {
@@ -99,16 +100,15 @@ export class OverlayManager {
   }
 
   public showAISettings(): void {
-    this.aiModalVisible = true;
-    this.aiModalShowSettings = true;
-    this.aiModalLoading = false;
+    this.workspaceVisible = true;
+    this.activeTab = 'Settings';
     this.render();
   }
 
   public showAILoading(): void {
-    this.aiModalVisible = true;
+    this.workspaceVisible = true;
+    this.activeTab = 'AI';
     this.aiModalLoading = true;
-    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = null;
@@ -117,16 +117,16 @@ export class OverlayManager {
 
   public updateStreamingText(chunk: string): void {
     this.streamingText += chunk;
-    this.aiModalVisible = true;
+    this.workspaceVisible = true;
+    this.activeTab = 'AI';
     this.aiModalLoading = true;
-    this.aiModalShowSettings = false;
     this.render();
   }
 
   public showAIResponse(data: FakeAIResponse): void {
-    this.aiModalVisible = true;
+    this.workspaceVisible = true;
+    this.activeTab = 'AI';
     this.aiModalLoading = false;
-    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = data;
     this.aiModalError = null;
@@ -134,9 +134,9 @@ export class OverlayManager {
   }
 
   public showAIError(error: string): void {
-    this.aiModalVisible = true;
+    this.workspaceVisible = true;
+    this.activeTab = 'AI';
     this.aiModalLoading = false;
-    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = error;
@@ -144,10 +144,7 @@ export class OverlayManager {
   }
 
   public closeAIModal(): void {
-    this.aiModalVisible = false;
-    this.aiModalLoading = false;
-    this.aiModalShowSettings = false;
-    this.streamingText = '';
+    this.workspaceVisible = false;
     this.render();
   }
 
@@ -256,9 +253,20 @@ export class OverlayManager {
   }
 
   private handleKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape' && this.aiModalVisible) {
-      this.closeAIModal();
-      return;
+    if (event.key === 'Escape') {
+      if (this.workspaceVisible) {
+        this.workspaceVisible = false;
+        event.preventDefault();
+        event.stopPropagation();
+        this.render();
+        return;
+      } else if (this.isVisible) {
+        this.isVisible = false;
+        event.preventDefault();
+        event.stopPropagation();
+        this.render();
+        return;
+      }
     }
 
     const isCmdOrCtrl = event.metaKey || event.ctrlKey;
@@ -274,38 +282,97 @@ export class OverlayManager {
 
     this.reactRoot.render(
       React.createElement(
-        React.Fragment,
+        React.StrictMode,
         null,
-        React.createElement(FloatingToolbar, {
-          visible: this.isVisible,
-          pendingCommitmentText: this.pendingCommitmentText,
-          onDragStart: this.handleDragStart,
-          onAIClick: () => this.openAIModal(),
-          onSettingsClick: () => this.showAISettings(),
-        }),
-        React.createElement(AIModal, {
-          visible: this.aiModalVisible,
-          loading: this.aiModalLoading,
-          initialShowSettings: this.aiModalShowSettings,
-          streamingText: this.streamingText,
-          data: this.aiModalData,
-          error: this.aiModalError,
-          compiledPrompt: this.compiledPrompt,
-          copilotTip: this.aiModalCopilotTip,
-          onClose: () => this.closeAIModal(),
-          onRegenerate: () => {
-            this.showAILoading();
-            if (this.onAIClickCallback) {
-              this.onAIClickCallback();
-            }
-          },
-          onInsert: (text: string) => {
-            if (this.onInsertDraftCallback) {
-              this.onInsertDraftCallback(text);
-            }
-            this.closeAIModal();
-          },
-        })
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(FloatingToolbar, {
+            visible: this.isVisible,
+            isWorkspaceOpen: this.workspaceVisible,
+            activeTab: this.activeTab,
+            pendingCommitmentText: this.pendingCommitmentText,
+            onDragStart: this.handleDragStart,
+            onLogoClick: () => {
+              this.workspaceVisible = !this.workspaceVisible;
+              this.render();
+            },
+            onAIClick: () => {
+              if (this.workspaceVisible && this.activeTab === 'AI') {
+                this.workspaceVisible = false;
+              } else {
+                this.workspaceVisible = true;
+                this.activeTab = 'AI';
+              }
+              this.render();
+            },
+            onToneClick: () => {
+              if (this.workspaceVisible && this.activeTab === 'Tone') {
+                this.workspaceVisible = false;
+              } else {
+                this.workspaceVisible = true;
+                this.activeTab = 'Tone';
+              }
+              this.render();
+            },
+            onStrategyClick: () => {
+              if (this.workspaceVisible && this.activeTab === 'Strategy') {
+                this.workspaceVisible = false;
+              } else {
+                this.workspaceVisible = true;
+                this.activeTab = 'Strategy';
+              }
+              this.render();
+            },
+            onMemoryClick: () => {
+              if (this.workspaceVisible && this.activeTab === 'Memory') {
+                this.workspaceVisible = false;
+              } else {
+                this.workspaceVisible = true;
+                this.activeTab = 'Memory';
+              }
+              this.render();
+            },
+            onSettingsClick: () => {
+              if (this.workspaceVisible && this.activeTab === 'Settings') {
+                this.workspaceVisible = false;
+              } else {
+                this.workspaceVisible = true;
+                this.activeTab = 'Settings';
+              }
+              this.render();
+            },
+          }),
+          React.createElement(AIModal, {
+            visible: this.workspaceVisible,
+            activeTab: this.activeTab,
+            onTabChange: (tab) => {
+              this.activeTab = tab;
+              this.render();
+            },
+            loading: this.aiModalLoading,
+            initialShowSettings: this.activeTab === 'Settings',
+            streamingText: this.streamingText,
+            data: this.aiModalData,
+            error: this.aiModalError,
+            compiledPrompt: this.compiledPrompt,
+            copilotTip: this.aiModalCopilotTip,
+            anchorTop: this.customPosition ? this.customPosition.top : this.anchoredPosition.top,
+            onClose: () => this.closeAIModal(),
+            onRegenerate: () => {
+              this.showAILoading();
+              if (this.onAIClickCallback) {
+                this.onAIClickCallback();
+              }
+            },
+            onInsert: (text: string) => {
+              if (this.onInsertDraftCallback) {
+                this.onInsertDraftCallback(text);
+              }
+              this.closeAIModal();
+            },
+          })
+        )
       )
     );
   }

@@ -1,5 +1,5 @@
 import { ApiKeyManager, AIService, ContextEngine, SettingsManager } from '@rapport/ai-core';
-import { MemoryExtractor, MemoryService } from '@rapport/memory';
+import { MemoryExtractor, MemoryService, BrowserStorageMemoryStore } from '@rapport/memory';
 import {
   AIReplyRequestPayload,
   AIReplyResponsePayload,
@@ -35,6 +35,13 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged)
         console.log('[Rapport AI:Background] Storage change detected — clearing API key cache & reloading settings...');
         ApiKeyManager.getInstance().clearMemoryCache();
         SettingsManager.getInstance().loadSettings();
+      }
+      const hasMemoriesKey = Object.keys(changes).some(
+        (key) => key === 'rapport_memories_v1'
+      );
+      if (hasMemoriesKey) {
+        console.log('[Rapport AI:Background] Memories storage change detected — invalidating cache...');
+        BrowserStorageMemoryStore.getInstance().invalidateCache();
       }
     }
   });

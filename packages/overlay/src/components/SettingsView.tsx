@@ -28,7 +28,7 @@ type PreferencesTab =
 
 export interface SettingsViewProps {
   onClose?: () => void;
-  mode?: 'popup' | 'sidepanel' | 'overlay';
+  mode?: 'popup' | 'sidepanel' | 'overlay' | 'workspace';
 }
 
 interface ToastMessage {
@@ -129,6 +129,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
 
   const toastIdRef = useRef(0);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (mode !== 'overlay') return;
+
+    const focusableElements = modalRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusableElements && focusableElements.length > 0) {
+      (focusableElements[0] as HTMLElement).focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (onClose) {
+          e.preventDefault();
+          onClose();
+        }
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        if (!modalRef.current) return;
+        const elements = Array.from(
+          modalRef.current.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ) as HTMLElement[];
+
+        if (elements.length === 0) return;
+
+        const firstEl = elements[0];
+        const lastEl = elements[elements.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstEl) {
+            lastEl.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastEl) {
+            firstEl.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mode, onClose]);
 
   // ─── Theme & Adaptive Color Palette ─────────────────────────────────────────
   const [systemIsDark, setSystemIsDark] = useState(false);
@@ -455,6 +507,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     },
   ];
 
+  // Layout sizing config based on display modes
+  const [size, setSize] = useState({
+    width: mode === 'popup' ? 440 : (mode === 'sidepanel' ? 320 : (mode === 'workspace' ? 420 : 1100)),
+    height: mode === 'popup' ? 560 : (mode === 'sidepanel' ? 650 : (mode === 'workspace' ? 350 : 760))
+  });
+
+  // Prevent background scrolling when overlay modal is active
+  useEffect(() => {
+    if (mode === 'popup' || mode === 'sidepanel' || mode === 'workspace') return;
+  }, [mode]);
+
   // ─── Key status badge helper ────────────────────────────────────────────────
   const keyStatusBadge = (providerId: string) => {
     const status = keyStatuses[providerId] || 'missing';
@@ -470,18 +533,51 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     return <span style={S.badge(C.textTertiary, C.bgHover)}>Configure Key</span>;
   };
 
-  // Layout sizing config based on display modes
-  const [size, setSize] = useState({
-    width: mode === 'popup' ? 440 : 720,
-    height: mode === 'popup' ? 560 : 650
-  });
+  const sizeRef = useRef(size);
   const isResizingRef = useRef(false);
 
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+  useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
+
+  useEffect(() => {
+    const loadPersistedSize = async () => {
+      if (mode === 'popup' || mode === 'sidepanel' || mode === 'workspace') return;
+      try {
+        let savedSize = null;
+        const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+        if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+          const res = typeof chromeObj.storage.local.get === 'function'
+            ? await chromeObj.storage.local.get(['rapport_preferences_window_size'])
+            : await new Promise<Record<string, any>>((resolve) => {
+                chromeObj.storage.local.get(['rapport_preferences_window_size'], resolve);
+              });
+          savedSize = res?.rapport_preferences_window_size;
+        } else if (typeof localStorage !== 'undefined') {
+          const raw = localStorage.getItem('rapport_preferences_window_size');
+          if (raw) savedSize = JSON.parse(raw);
+        }
+        if (savedSize && savedSize.width && savedSize.height) {
+          const maxW = Math.round(window.innerWidth * 0.95);
+          const maxH = Math.round(window.innerHeight * 0.95);
+          setSize({
+            width: Math.max(900, Math.min(maxW, savedSize.width)),
+            height: Math.max(650, Math.min(maxH, savedSize.height))
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load settings window size:', err);
+      }
+    };
+    loadPersistedSize();
+  }, [mode]);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent, direction: 'r' | 'b' | 'br') => {
     e.preventDefault();
+    e.stopPropagation();
     isResizingRef.current = true;
-    const startWidth = size.width;
-    const startHeight = size.height;
+    const startWidth = sizeRef.current.width;
+    const startHeight = sizeRef.current.height;
     const startX = e.clientX;
     const startY = e.clientY;
 
@@ -489,38 +585,115 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
       if (!isResizingRef.current) return;
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
-      setSize({
-        width: Math.max(380, Math.min(1200, startWidth + deltaX)),
-        height: Math.max(450, Math.min(1000, startHeight + deltaY))
-      });
+
+      const minW = 900;
+      const minH = 650;
+      const maxW = Math.round(window.innerWidth * 0.95);
+      const maxH = Math.round(window.innerHeight * 0.95);
+
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+
+      if (direction === 'r' || direction === 'br') {
+        newWidth = Math.max(minW, Math.min(maxW, startWidth + deltaX));
+      }
+      if (direction === 'b' || direction === 'br') {
+        newHeight = Math.max(minH, Math.min(maxH, startHeight + deltaY));
+      }
+
+      setSize({ width: newWidth, height: newHeight });
     };
 
     const handleMouseUp = () => {
       isResizingRef.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      
+      const finalSize = sizeRef.current;
+      try {
+        const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+        if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+          chromeObj.storage.local.set({ rapport_preferences_window_size: finalSize });
+        } else if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('rapport_preferences_window_size', JSON.stringify(finalSize));
+        }
+      } catch (err) {
+        console.warn('Failed to save settings window size:', err);
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [size]);
+  }, []);
 
-  const sidebarWidth = mode === 'popup' ? '140px' : '180px';
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleWindowResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, []);
+
+  const isSmallScreen = windowWidth <= 960 && mode !== 'popup' && mode !== 'sidepanel';
+  const isLaptop = windowWidth <= 1200 && windowWidth > 960 && mode !== 'popup' && mode !== 'sidepanel';
+
+  const sidebarWidth = mode === 'popup'
+    ? '60px'
+    : mode === 'sidepanel'
+    ? '60px'
+    : isSmallScreen
+    ? '60px'
+    : isLaptop
+    ? '240px'
+    : '280px';
+
+  const showLabels = mode !== 'popup' && mode !== 'sidepanel' && !isSmallScreen;
+
+  const tabIds: PreferencesTab[] = tabs.filter((t) => !t.hidden).map((t) => t.id);
+
+  const handleSidebarKeyDown = (e: React.KeyboardEvent) => {
+    const currentIndex = tabIds.indexOf(activeTab);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = (currentIndex + 1) % tabIds.length;
+      setActiveTab(tabIds[nextIndex]);
+      const buttons = modalRef.current
+        ? Array.from(modalRef.current.querySelectorAll('[role="tab"]')) as HTMLElement[]
+        : [];
+      if (buttons && buttons[nextIndex]) {
+        buttons[nextIndex].focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = (currentIndex - 1 + tabIds.length) % tabIds.length;
+      setActiveTab(tabIds[prevIndex]);
+      const buttons = modalRef.current
+        ? Array.from(modalRef.current.querySelectorAll('[role="tab"]')) as HTMLElement[]
+        : [];
+      if (buttons && buttons[prevIndex]) {
+        buttons[prevIndex].focus();
+      }
+    }
+  };
 
   return (
     <div
+      ref={modalRef}
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: `${size.width}px`,
-        height: `${size.height}px`,
-        maxWidth: '100vw',
-        maxHeight: '100vh',
-        background: C.bg,
+        width: mode === 'workspace' ? '100%' : `${size.width}px`,
+        height: mode === 'workspace' ? '100%' : `${size.height}px`,
+        maxWidth: mode === 'workspace' ? '100%' : (mode === 'popup' || mode === 'sidepanel' ? '100vw' : '90vw'),
+        maxHeight: mode === 'workspace' ? '100%' : (mode === 'popup' || mode === 'sidepanel' ? '100vh' : '90vh'),
+        background: mode === 'workspace' ? 'transparent' : C.bg,
         color: C.textPrimary,
-        borderRadius: C.radiusLg,
-        border: `1px solid ${C.border}`,
-        boxShadow: C.shadow,
+        borderRadius: mode === 'workspace' ? '0' : C.radiusLg,
+        border: mode === 'workspace' ? 'none' : `1px solid ${C.border}`,
+        boxShadow: mode === 'workspace' ? 'none' : C.shadow,
         fontFamily: C.fontFamily,
         overflow: 'hidden',
         position: 'relative',
@@ -530,17 +703,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
       aria-label="Rapport Preferences"
     >
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px 20px',
-          borderBottom: `1px solid ${C.border}`,
-          background: isDark ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.3)',
-          flexShrink: 0,
-        }}
-      >
+      {mode !== 'workspace' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: `1px solid ${C.border}`,
+            background: isDark ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.3)',
+            flexShrink: 0,
+          }}
+        >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div
             style={{
@@ -597,12 +771,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
             ✕
           </button>
         )}
-      </div>
+        </div>
+      )}
 
       {/* ── Main Container: Sidebar + Content Panel ─────────────────────────── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Sidebar Nav */}
         <nav
+          onKeyDown={handleSidebarKeyDown}
           style={{
             width: sidebarWidth,
             borderRight: `1px solid ${C.border}`,
@@ -629,8 +805,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 12px',
+                    justifyContent: showLabels ? 'flex-start' : 'center',
+                    gap: showLabels ? '8px' : '0',
+                    padding: showLabels ? '8px 12px' : '10px 0',
                     borderRadius: C.radiusSm,
                     border: 'none',
                     background: isActive ? C.accentMuted : 'transparent',
@@ -638,11 +815,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                     fontSize: '12.5px',
                     fontWeight: isActive ? 600 : 500,
                     fontFamily: C.fontFamily,
-                    textAlign: 'left',
+                    textAlign: showLabels ? 'left' : 'center',
                     cursor: 'pointer',
                     transition: `all ${C.transition}`,
                     outline: 'none',
                   }}
+                  title={!showLabels ? t.label : undefined}
                   onMouseEnter={(e) => {
                     if (!isActive) e.currentTarget.style.background = C.bgHover;
                   }}
@@ -656,10 +834,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                     e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  <span style={{ fontSize: '13.5px', width: '16px', textAlign: 'center' }}>
+                  <span style={{ fontSize: '13.5px', width: showLabels ? '16px' : '20px', textAlign: 'center' }}>
                     {t.icon}
                   </span>
-                  <span>{t.label}</span>
+                  {showLabels && <span>{t.label}</span>}
                 </button>
               );
             })}
@@ -2126,37 +2304,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
         />
       )}
 
-      {/* ── Resize Handle ─────────────────────────────────────────────────── */}
-      <div
-        onMouseDown={handleResizeMouseDown}
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          right: 0,
-          width: '16px',
-          height: '16px',
-          cursor: 'se-resize',
-          display: 'flex',
-          alignItems: 'flex-end',
-          justifyContent: 'flex-end',
-          padding: '3px',
-          zIndex: 10000,
-        }}
-      >
-        <svg
-          width="8"
-          height="8"
-          viewBox="0 0 8 8"
-          style={{
-            fill: 'var(--rapport-text-tertiary)',
-            opacity: 0.6,
-            pointerEvents: 'none',
-          }}
-        >
-          <path d="M6 0 L8 0 L8 8 L0 8 L0 6 L4 6 L4 2 L6 2 Z" fill="var(--rapport-text-tertiary)" opacity="0.3" />
-          <path d="M7 3 L8 3 L8 8 L3 8 L3 7 L5 7 L5 5 L7 5 Z" fill="var(--rapport-text-tertiary)" opacity="0.6" />
-        </svg>
-      </div>
+      {/* Resizing Grab Handles */}
+      {mode !== 'popup' && mode !== 'sidepanel' && mode !== 'workspace' && (
+        <>
+          {/* Right edge */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, 'r')}
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: '6px',
+              height: '100%',
+              cursor: 'ew-resize',
+              zIndex: 10000,
+            }}
+          />
+          {/* Bottom edge */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, 'b')}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              width: '100%',
+              height: '6px',
+              cursor: 'ns-resize',
+              zIndex: 10000,
+            }}
+          />
+          {/* Bottom-right corner */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, 'br')}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              right: 0,
+              width: '16px',
+              height: '16px',
+              cursor: 'se-resize',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'flex-end',
+              padding: '3px',
+              zIndex: 10001,
+            }}
+          >
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              style={{
+                fill: 'var(--rapport-text-tertiary)',
+                opacity: 0.6,
+                pointerEvents: 'none',
+              }}
+            >
+              <path d="M6 0 L8 0 L8 8 L0 8 L0 6 L4 6 L4 2 L6 2 Z" fill="var(--rapport-text-tertiary)" opacity="0.3" />
+              <path d="M7 3 L8 3 L8 8 L3 8 L3 7 L5 7 L5 5 L7 5 Z" fill="var(--rapport-text-tertiary)" opacity="0.6" />
+            </svg>
+          </div>
+        </>
+      )}
     </div>
   );
 };

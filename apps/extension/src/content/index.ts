@@ -162,6 +162,9 @@ function initRapportContentScript(): void {
               console.log('[Rapport:AI] Received response:', response.data);
               inspector?.endStage('[8] Suggestion Rendering', { suggestions: response.data.suggestions?.length || 1 });
               overlay.showAIResponse(response.data);
+              if (chat) {
+                evaluateCopilotTip(chat.id, context);
+              }
             } else {
               console.error('[Rapport:AI] Response error:', response?.error);
               const errMsg = response?.error || 'Failed to generate AI response.';
