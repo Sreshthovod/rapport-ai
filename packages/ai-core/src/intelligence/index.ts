@@ -7,3 +7,4 @@ export { PendingContextAnalyzer } from './PendingContextAnalyzer.js';
 export { ObjectiveRecommender } from './ObjectiveRecommender.js';
 export { IntelligenceCache } from './IntelligenceCache.js';
 export { IntelligenceV2Analyzer } from './IntelligenceV2Analyzer.js';
+export { ConversationIntelligenceTest } from './ConversationIntelligence.test.js';

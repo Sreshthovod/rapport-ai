@@ -88,8 +88,33 @@ export interface PendingContextItems {
   promises: string[];
 }
 
+export interface ReplyStrategy {
+  shouldReplyNow: boolean;
+  shouldAskQuestion: boolean;
+  shouldReassure: boolean;
+  shouldChangeTopic: boolean;
+  shouldContinueTopic: boolean;
+  shouldBeConcise: boolean;
+  shouldBeDetailed: boolean;
+  subjectsToAvoid: string[];
+}
+
+export interface TimelineEvent {
+  type: 'plan' | 'event' | 'date' | 'promise' | 'task' | 'meeting' | 'travel' | 'birthday' | 'followup';
+  description: string;
+  date?: string;
+}
+
 export interface ConversationIntelligence {
   topic: string;
+  previousTopic?: string;
+  conversationGoal?: string;
+  emotionalState?: string;
+  energyLevel?: 'low' | 'medium' | 'high';
+  sentiment?: 'positive' | 'negative' | 'neutral';
+  dominantParticipant?: 'Me' | 'Other' | 'Equal';
+  speakingBalance?: string;
+  conversationHealthScore?: number;
   stage: ConversationStage;
   latestIntent: LatestIncomingIntent;
   primaryEmotion: EmotionalTone;
@@ -104,4 +129,7 @@ export interface ConversationIntelligence {
   pendingItems: PendingContextItems;
   suggestedGoal: string;
   confidenceScores: Record<string, number>;
+  emotions?: DetectedToneScore[];
+  replyStrategy?: ReplyStrategy;
+  timelineEvents?: TimelineEvent[];
 }

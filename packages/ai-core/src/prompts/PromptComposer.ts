@@ -154,6 +154,24 @@ export class PromptComposer {
       const relFreq = context.relationship?.messagesPerDay || 0;
       const relLang = context.relationship?.preferredLanguage || 'English';
 
+      const previousTopic = intel?.previousTopic || 'None';
+      const conversationGoal = intel?.conversationGoal || 'Maintain casual bonding';
+      const emotionalState = intel?.emotionalState || 'Neutral';
+      const energyLevel = intel?.energyLevel || 'medium';
+      const sentiment = intel?.sentiment || 'neutral';
+      const dominantParticipant = intel?.dominantParticipant || 'Equal';
+      const speakingBalance = intel?.speakingBalance || 'Me: 50%, Other: 50%';
+      const conversationHealthScore = intel?.conversationHealthScore ?? 100;
+      
+      const stratReplyNow = intel?.replyStrategy?.shouldReplyNow ? 'Yes' : 'No';
+      const stratAskQ = intel?.replyStrategy?.shouldAskQuestion ? 'Yes' : 'No';
+      const stratReassure = intel?.replyStrategy?.shouldReassure ? 'Yes' : 'No';
+      const stratChangeTopic = intel?.replyStrategy?.shouldChangeTopic ? 'Yes' : 'No';
+      const stratConcise = intel?.replyStrategy?.shouldBeConcise ? 'Yes' : 'No';
+      const stratAvoid = (intel?.replyStrategy?.subjectsToAvoid || []).join(', ') || 'None';
+
+      const timelineEventsText = (intel?.timelineEvents || []).map((e) => `- [${e.type.toUpperCase()}] ${e.description}`).join('\n') || 'None';
+
       const systemPrompt = [
         `You are Rapport AI (version ${PromptComposer.CURRENT_VERSION}), a world-class conversation copilot.`,
         `GOAL: ${goal}`,
@@ -187,11 +205,29 @@ export class PromptComposer {
         `=== CONVERSATION INTELLIGENCE v2 ===`,
         `CONVERSATION STAGE: ${stage}`,
         `CURRENT TOPIC: ${currentTopic}`,
+        `PREVIOUS TOPIC: ${previousTopic}`,
+        `CONVERSATION GOAL: ${conversationGoal}`,
         `LATEST INCOMING INTENT: ${latestIntent}`,
-        `PRIMARY EMOTION: ${primaryEmotion}`,
+        `PRIMARY EMOTION: ${primaryEmotion} (Overall mood: ${emotionalState})`,
+        `ENERGY LEVEL: ${energyLevel.toUpperCase()}`,
+        `SENTIMENT: ${sentiment.toUpperCase()}`,
+        `DOMINANT PARTICIPANT: ${dominantParticipant}`,
+        `SPEAKING BALANCE: ${speakingBalance}`,
+        `CONVERSATION HEALTH SCORE: ${conversationHealthScore}/100`,
         `URGENCY: ${urgency}`,
         `EXPECTED REPLY LENGTH: ${expectedReplyLength}`,
         detectedTones ? `DETECTED TONES: ${detectedTones}` : '',
+        ``,
+        `=== REPLY STRATEGY ===`,
+        `- Should Reply Now: ${stratReplyNow}`,
+        `- Should Ask Question: ${stratAskQ}`,
+        `- Should Reassure/Comfort: ${stratReassure}`,
+        `- Should Change Topic: ${stratChangeTopic}`,
+        `- Should Be Concise: ${stratConcise}`,
+        `- Sensitive Subjects to Avoid: ${stratAvoid}`,
+        ``,
+        `=== DETECTED CONTEXT TIMELINE ===`,
+        timelineEventsText,
         ``,
         `=== OUTPUT CONSTRAINTS ===`,
         `- Never sound robotic: ${constraints.neverSoundRobotic}`,
