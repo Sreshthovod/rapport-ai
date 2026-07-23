@@ -1932,6 +1932,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                   onChange={(v) => handleUpdate({ enableProviderFallback: v })}
                 />
 
+                <ToggleRow
+                  label="Reply Quality Engine"
+                  description="Scores suggestions on naturalness, relevance, grammar, and repetition before showing."
+                  checked={settings.enableReplyQualityEngine}
+                  onChange={(v) => handleUpdate({ enableReplyQualityEngine: v })}
+                />
+
                 <SliderField
                   label="Memory Context Budget"
                   value={settings.maxMemoriesInBudget}

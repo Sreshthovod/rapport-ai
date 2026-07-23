@@ -21,4 +21,6 @@ export { WritingStyleEngine } from './style/WritingStyleEngine.js';
 export { WritingStyleAnalyzer } from './style/WritingStyleAnalyzer.js';
 export { WritingStyleStore } from './style/WritingStyleStore.js';
 export { WritingStyleTest } from './style/WritingStyle.test.js';
+export { ReplyQualityEvaluator } from './intelligence/ReplyQualityEvaluator.js';
+export { ReplyQualityTest } from './intelligence/ReplyQualityEvaluator.test.js';
 

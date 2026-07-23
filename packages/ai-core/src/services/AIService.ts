@@ -1,4 +1,4 @@
-import { AIRequest, ProviderResult } from '@rapport/shared';
+import { AIRequest, ProviderResult, AISuggestion } from '@rapport/shared';
 import { AIPipelineInspector } from '@rapport/shared';
 import { DEBUG_AI_PIPELINE } from '../prompts/PromptComposer.js';
 import { ContextEngine } from '../context/ContextEngine.js';
@@ -6,6 +6,7 @@ import { PromptComposer } from '../prompts/PromptComposer.js';
 import { ApiKeyManager } from '../providers/ApiKeyManager.js';
 import { ProviderManager } from '../providers/ProviderManager.js';
 import { SettingsManager } from './SettingsManager.js';
+import { ReplyQualityEvaluator } from '../intelligence/ReplyQualityEvaluator.js';
 
 export class AIService {
   private readonly providerManager: ProviderManager;
@@ -87,23 +88,121 @@ export class AIService {
         'Prompt Length': promptLength,
       });
 
-      // 3. Route to active provider
-      inspector?.startStage('[6] Provider Request');
-      const result = await this.providerManager.executeWithFallback(enrichedRequest, options);
+      // 3. Route to active provider with Quality Evaluation and Auto-Regeneration loop
+      let attempts = 0;
+      const maxAttempts = 3;
+      const history: Array<{
+        result: ProviderResult;
+        suggestions: AISuggestion[];
+        avgScore: number;
+      }> = [];
+
+      let currentRequest = enrichedRequest;
+      let finalResult: ProviderResult | null = null;
+
+      while (attempts < maxAttempts) {
+        inspector?.startStage(`[6] Provider Request (Attempt ${attempts + 1})`);
+        const result = await this.providerManager.executeWithFallback(currentRequest, options);
+        inspector?.endStage(`[6] Provider Request (Attempt ${attempts + 1})`, {
+          provider: result.data?.providerId || resolvedProvider,
+          success: result.success,
+        }, !result.success);
+
+        if (!result.success || !result.data) {
+          finalResult = result;
+          break;
+        }
+
+        // Parse suggestions
+        const rawSuggestions: AISuggestion[] = result.data.suggestions || (result.data.suggestedReply ? [{
+          id: `sug_${Date.now()}_0`,
+          text: result.data.suggestedReply,
+          tone: result.data.tone || 'Balanced',
+          style: 'Default',
+          explanation: result.data.reasoning || '',
+          confidence: 0.9,
+        }] : []);
+
+        // 4. Quality Evaluation
+        if (settings.enableReplyQualityEngine) {
+          const evaluated = rawSuggestions.map((sug) => {
+            const report = ReplyQualityEvaluator.evaluate(sug.text, structuredContext, sug.tone || sug.style || 'Balanced');
+            return {
+              ...sug,
+              qualityReport: report,
+            };
+          });
+
+          const valid = evaluated.filter((s) => s.qualityReport?.isValid);
+          const avgScore = evaluated.length > 0
+            ? evaluated.reduce((sum, s) => sum + (s.qualityReport?.overallScore || 0), 0) / evaluated.length
+            : 0;
+
+          history.push({ result, suggestions: evaluated, avgScore });
+
+          // If we have enough valid suggestions, or if this is the last attempt
+          if (valid.length >= Math.min(2, rawSuggestions.length)) {
+            result.data.suggestions = valid;
+            // Also update the main suggestion reply field to the top valid suggestion
+            if (valid.length > 0) {
+              result.data.suggestedReply = valid[0].text;
+              result.data.tone = valid[0].tone;
+              result.data.reasoning = valid[0].explanation;
+            }
+            finalResult = result;
+            break;
+          }
+
+          // Otherwise, collect issues and prepare regeneration prompt feedback
+          const allIssues = new Set<string>();
+          evaluated.forEach((s) => s.qualityReport?.issues.forEach((i) => allIssues.add(i)));
+          
+          console.warn(`[Rapport AI:QualityEngine] Attempt ${attempts + 1} failed quality checks. Issues:`, [...allIssues]);
+
+          const issueFeedback = `\n\n[QUALITY WARNING FROM PREVIOUS ATTEMPT]: The suggestions generated were rejected due to the following quality issues:\n${[...allIssues].map((i) => ` - ${i}`).join('\n')}\nPlease generate new, distinct, natural, and contextually relevant suggestions that do NOT repeat the previous attempts and strictly avoid these issues.`;
+
+          if (currentRequest.compiledPrompt) {
+            currentRequest = {
+              ...currentRequest,
+              compiledPrompt: {
+                ...currentRequest.compiledPrompt,
+                userPrompt: currentRequest.compiledPrompt.userPrompt + issueFeedback,
+              },
+            };
+          }
+        } else {
+          // If quality engine is disabled, return immediately on first success
+          finalResult = result;
+          break;
+        }
+
+        attempts++;
+      }
+
+      // If we exhausted all attempts without finding a fully valid set of suggestions,
+      // select the attempt with the highest average overall score (Resilient Fallback)
+      if (!finalResult && history.length > 0) {
+        console.warn('[Rapport AI:QualityEngine] All regeneration attempts failed quality threshold. Falling back to highest scoring attempt.');
+        const best = history.sort((a, b) => b.avgScore - a.avgScore)[0];
+        finalResult = best.result;
+        if (finalResult.data) {
+          finalResult.data.suggestions = best.suggestions;
+          if (best.suggestions.length > 0) {
+            finalResult.data.suggestedReply = best.suggestions[0].text;
+            finalResult.data.tone = best.suggestions[0].tone;
+            finalResult.data.reasoning = best.suggestions[0].explanation;
+          }
+        }
+      }
+
       const finishTime = Date.now();
       const totalDurationMs = finishTime - startTime;
-      const providerUsed = result.data?.providerId || resolvedProvider;
+      const providerUsed = finalResult?.data?.providerId || resolvedProvider;
 
-      inspector?.endStage('[6] Provider Request', {
-        provider: providerUsed,
-        success: result.success,
-        tokens: result.data?.metadata?.tokens,
-      }, !result.success);
-
-      // 4. Provider Response Parsed
+      // 5. Provider Response Parsed
       inspector?.startStage('[7] Provider Response Parsed');
-      const suggestionCount = result.data?.suggestions?.length || (result.data?.suggestedReply ? 1 : 0);
-      inspector?.endStage('[7] Provider Response Parsed', { suggestionCount }, !result.success);
+      const suggestionCount = finalResult?.data?.suggestions?.length || (finalResult?.data?.suggestedReply ? 1 : 0);
+      inspector?.endStage('[7] Provider Response Parsed', { suggestionCount }, !finalResult?.success);
 
       console.log(`[Rapport AI:Pipeline] Request Finished at ${new Date(finishTime).toISOString()} (Duration: ${totalDurationMs}ms)`);
       console.log(`[Rapport AI:Pipeline] Provider Used: "${providerUsed}"`);
@@ -112,13 +211,13 @@ export class AIService {
       inspector?.updateDiagnostics({
         currentStage: 'Completed',
         totalDurationMs,
-        success: result.success,
+        success: finalResult?.success || false,
         provider: providerUsed,
         model: selectedModel,
         promptLength,
-        completionTokens: result.data?.metadata?.tokens as number | undefined,
-        finishReason: result.success ? 'stop' : 'error',
-        lastError: result.error,
+        completionTokens: finalResult?.data?.metadata?.tokens as number | undefined,
+        finishReason: finalResult?.success ? 'stop' : 'error',
+        lastError: finalResult?.error,
       });
 
       // Throw warning immediately if Provider Used != Selected Provider
@@ -128,7 +227,7 @@ export class AIService {
         );
       }
 
-      return result;
+      return finalResult || { success: false, error: 'AIService failed to generate any response.' };
     } catch (err) {
       return {
         success: false,

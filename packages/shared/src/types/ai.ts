@@ -59,6 +59,18 @@ export interface ProviderPromptRequest {
   compiledPrompt?: CompiledPromptSpec;
 }
 
+export interface SuggestionQualityReport {
+  contextRelevance: number;
+  naturalness: number;
+  grammar: number;
+  repetition: number;
+  toneConsistency: number;
+  conversationContinuation: number;
+  overallScore: number;
+  isValid: boolean;
+  issues: string[];
+}
+
 export interface AISuggestion {
   id: string;
   text: string;
@@ -68,6 +80,7 @@ export interface AISuggestion {
   explanation: string;
   confidence: number;
   pinned?: boolean;
+  qualityReport?: SuggestionQualityReport;
 }
 
 export interface MultiAISuggestionResponse {

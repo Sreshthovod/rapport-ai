@@ -71,6 +71,7 @@ export interface RapportSettings {
   promptContextBudget: number;
   cacheDurationMs: number;
   rawPromptInspect: boolean;
+  enableReplyQualityEngine: boolean;
 
   // ── Developer ──────────────────────────────────────────────────────────────
   inspectorMode: boolean;
@@ -134,6 +135,7 @@ export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
   promptContextBudget: 4000,
   cacheDurationMs: 300000,
   rawPromptInspect: false,
+  enableReplyQualityEngine: true,
 
   // Developer
   inspectorMode: false,
