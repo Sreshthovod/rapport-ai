@@ -6,3 +6,4 @@ export { HealthAnalyzer } from './HealthAnalyzer.js';
 export { PendingContextAnalyzer } from './PendingContextAnalyzer.js';
 export { ObjectiveRecommender } from './ObjectiveRecommender.js';
 export { IntelligenceCache } from './IntelligenceCache.js';
+export { IntelligenceV2Analyzer } from './IntelligenceV2Analyzer.js';

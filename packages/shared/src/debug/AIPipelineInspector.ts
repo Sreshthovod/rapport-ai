@@ -48,40 +48,41 @@ export interface PipelineTraceEvent {
   payload: unknown;
 }
 
-// ---------------------------------------------------------------------------
-// Inspector
-// ---------------------------------------------------------------------------
+export interface PipelineStageTiming {
+  stage: string;
+  durationMs: number;
+  status: 'ok' | 'timeout' | 'error';
+}
+
+export interface PipelineDiagnosticsSummary {
+  currentStage: string;
+  totalDurationMs: number;
+  success: boolean;
+  provider: string;
+  model: string;
+  promptLength: number;
+  completionTokens?: number;
+  finishReason?: string;
+  lastError?: string;
+  stageTimings: PipelineStageTiming[];
+}
 
 export class AIPipelineInspector {
-  /** Singleton instance. */
   private static _instance: AIPipelineInspector | null = null;
-
-  /** Maximum number of events kept in the ring-buffer before oldest are evicted. */
   private readonly _maxEvents: number;
-
-  /** Ring-buffer of captured events. */
   private readonly _events: PipelineTraceEvent[] = [];
-
-  /** Monotonic origin time (performance.now() at construction). */
   private readonly _origin: number;
+  private readonly _activeTimers: Map<string, number> = new Map();
+  private readonly _stageTimings: PipelineStageTiming[] = [];
+  private _latestDiagnostics: Partial<PipelineDiagnosticsSummary> = {};
 
-  /**
-   * Whether the inspector is currently active.
-   * Defaults to `true` in development, `false` otherwise.
-   * Can be toggled at runtime via `inspector.enabled = false`.
-   */
   public enabled: boolean;
 
   private constructor(maxEvents = 200) {
     this._maxEvents = maxEvents;
     this._origin = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    // Detect development environment without relying on Node.js `process`
     this.enabled = _isDevEnvironment();
   }
-
-  // -------------------------------------------------------------------------
-  // Singleton access
-  // -------------------------------------------------------------------------
 
   public static getInstance(): AIPipelineInspector {
     if (!AIPipelineInspector._instance) {
@@ -90,22 +91,64 @@ export class AIPipelineInspector {
     return AIPipelineInspector._instance;
   }
 
-  /** Reset the singleton (useful in tests). */
   public static resetInstance(): void {
     AIPipelineInspector._instance = null;
   }
 
-  // -------------------------------------------------------------------------
-  // Core API
-  // -------------------------------------------------------------------------
+  public startStage(stageName: string): void {
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    this._activeTimers.set(stageName, t0);
+    this._latestDiagnostics.currentStage = stageName;
+    console.log(`[Pipeline] ${stageName}: started...`);
+  }
 
-  /**
-   * Record a trace event for the given pipeline stage.
-   *
-   * @param stage     - Name of the pipeline stage.
-   * @param payload   - Snapshot of data to capture (will be shallow-cloned).
-   * @param durationMs - Optional time measurement for the stage.
-   */
+  public endStage(stageName: string, payload?: unknown, isError = false): number {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const t0 = this._activeTimers.get(stageName) || now;
+    const durationMs = Math.round(now - t0);
+    this._activeTimers.delete(stageName);
+
+    const status: 'ok' | 'timeout' | 'error' = isError
+      ? 'error'
+      : durationMs > 10000
+      ? 'timeout'
+      : 'ok';
+
+    if (durationMs > 10000) {
+      console.error(`[Pipeline:CRITICAL] Stage "${stageName}" EXCEEDED 10 SECONDS TIMEOUT LIMIT! Took ${durationMs}ms`);
+    } else {
+      console.log(`[Pipeline] ${stageName}: finished (${durationMs}ms)`);
+    }
+
+    const timing: PipelineStageTiming = { stage: stageName, durationMs, status };
+    this._stageTimings.push(timing);
+
+    this.trace(stageName as PipelineStage, payload, durationMs);
+    return durationMs;
+  }
+
+  public updateDiagnostics(diagnostics: Partial<PipelineDiagnosticsSummary>): void {
+    this._latestDiagnostics = {
+      ...this._latestDiagnostics,
+      ...diagnostics,
+    };
+  }
+
+  public getDiagnosticsSummary(): PipelineDiagnosticsSummary {
+    return {
+      currentStage: this._latestDiagnostics.currentStage || 'Completed',
+      totalDurationMs: this._latestDiagnostics.totalDurationMs || 0,
+      success: this._latestDiagnostics.success !== false,
+      provider: this._latestDiagnostics.provider || 'Offline',
+      model: this._latestDiagnostics.model || 'Default Model',
+      promptLength: this._latestDiagnostics.promptLength || 0,
+      completionTokens: this._latestDiagnostics.completionTokens,
+      finishReason: this._latestDiagnostics.finishReason || (this._latestDiagnostics.success === false ? 'error' : 'stop'),
+      lastError: this._latestDiagnostics.lastError,
+      stageTimings: [...this._stageTimings],
+    };
+  }
+
   public trace(stage: PipelineStage, payload: unknown, durationMs?: number): void {
     if (!this.enabled) return;
 
@@ -118,7 +161,6 @@ export class AIPipelineInspector {
       payload: _safeClone(payload),
     };
 
-    // Evict oldest when ring-buffer is full
     if (this._events.length >= this._maxEvents) {
       this._events.shift();
     }
@@ -235,3 +277,7 @@ function _printEvent(event: PipelineTraceEvent): void {
 // Ambient declaration to satisfy TypeScript when __DEV__ is injected
 // ---------------------------------------------------------------------------
 declare const __DEV__: boolean | undefined;
+
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).AIPipelineInspector = AIPipelineInspector;
+}

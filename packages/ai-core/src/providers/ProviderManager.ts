@@ -5,6 +5,7 @@ import { ClaudeProvider } from './ClaudeProvider.js';
 import { FakeProvider } from './FakeProvider.js';
 import { GeminiProvider } from './GeminiProvider.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
+import { GroqProvider } from './GroqProvider.js';
 import { ProviderRegistry } from './ProviderRegistry.js';
 
 export class ProviderManager {
@@ -18,7 +19,7 @@ export class ProviderManager {
     temperature: 0.7,
     maxTokens: 500,
     maxRetries: 2,
-    timeoutMs: 15000,
+    timeoutMs: 30000,
   };
 
   constructor() {
@@ -45,6 +46,9 @@ export class ProviderManager {
     if (!this.registry.hasProvider('gemini')) {
       this.registry.registerProvider(new GeminiProvider());
     }
+    if (!this.registry.hasProvider('groq')) {
+      this.registry.registerProvider(new GroqProvider());
+    }
   }
 
   public setConfig(newConfig: Partial<ProviderConfig>): void {
@@ -58,8 +62,16 @@ export class ProviderManager {
     return { ...this.config };
   }
 
+  public setActiveProvider(providerId: string): void {
+    this.config.activeProviderId = providerId as any;
+  }
+
+  public getActiveProviderId(): string {
+    return this.config.activeProviderId || 'fake-provider';
+  }
+
   public async getActiveProvider(): Promise<AIProvider> {
-    const providerId = this.config.activeProviderId || 'fake-provider';
+    const providerId = this.getActiveProviderId();
     return this.registry.getProvider(providerId);
   }
 
@@ -74,14 +86,28 @@ export class ProviderManager {
   }
 
   /**
-   * Executes AI generation with exponential backoff retries & fallback provider support
+   * Executes AI generation using the active provider with automatic retries.
+   * Never silently falls back to Offline provider when a cloud provider is selected.
    */
   public async executeWithFallback(
     request: AIRequest,
     options?: { signal?: AbortSignal }
   ): Promise<ProviderResult> {
     const targetProviderId = request.providerId || this.config.activeProviderId || 'fake-provider';
-    const primaryProvider = this.registry.getProvider(targetProviderId);
+    
+    let primaryProvider: AIProvider;
+    try {
+      primaryProvider = this.registry.getProvider(targetProviderId);
+    } catch (err) {
+      if (targetProviderId !== 'fake-provider') {
+        console.warn(`[ProviderManager] Provider "${targetProviderId}" initialization failed:`, err);
+        return {
+          success: false,
+          error: `Provider "${targetProviderId}" initialization failed: ${err instanceof Error ? err.message : 'Unknown error'}.`,
+        };
+      }
+      primaryProvider = this.registry.getProvider('fake-provider');
+    }
 
     const enrichedRequest: AIRequest = {
       ...request,
@@ -91,27 +117,13 @@ export class ProviderManager {
       },
     };
 
-    // Attempt primary execution with retries
-    const primaryResult = await this.executeWithRetry(primaryProvider, enrichedRequest, options);
-    if (primaryResult.success) {
-      return primaryResult;
-    }
-
-    // Fallback execution if primary failed & fallback is configured and different
-    const fallbackId = this.config.fallbackProviderId || 'fake-provider';
-    if (fallbackId && fallbackId !== targetProviderId) {
-      const fallbackProvider = this.registry.getProvider(fallbackId);
-      const fallbackResult = await this.executeWithRetry(fallbackProvider, enrichedRequest, options);
-      if (fallbackResult.success) {
-        return fallbackResult;
-      }
-    }
-
-    return primaryResult;
+    // Execute primary provider with retries
+    return this.executeWithRetry(primaryProvider, enrichedRequest, options);
   }
 
   /**
-   * Executes streaming generation with fallback provider support
+   * Executes streaming generation using the active provider.
+   * Never silently falls back to Offline provider when a cloud provider is selected.
    */
   public async executeStreamWithFallback(
     request: AIRequest,
@@ -119,7 +131,20 @@ export class ProviderManager {
     options?: { signal?: AbortSignal }
   ): Promise<ProviderResult> {
     const targetProviderId = request.providerId || this.config.activeProviderId || 'fake-provider';
-    const primaryProvider = this.registry.getProvider(targetProviderId);
+    
+    let primaryProvider: AIProvider;
+    try {
+      primaryProvider = this.registry.getProvider(targetProviderId);
+    } catch (err) {
+      if (targetProviderId !== 'fake-provider') {
+        console.warn(`[ProviderManager] Streaming provider "${targetProviderId}" initialization failed:`, err);
+        return {
+          success: false,
+          error: `Provider "${targetProviderId}" initialization failed: ${err instanceof Error ? err.message : 'Unknown error'}.`,
+        };
+      }
+      primaryProvider = this.registry.getProvider('fake-provider');
+    }
 
     const enrichedRequest: AIRequest = {
       ...request,
@@ -130,20 +155,7 @@ export class ProviderManager {
     };
 
     if (primaryProvider.generateReplyStream) {
-      const primaryResult = await primaryProvider.generateReplyStream(enrichedRequest, onChunk, options);
-      if (primaryResult.success) {
-        return primaryResult;
-      }
-    }
-
-    // Fallback streaming execution
-    const fallbackId = this.config.fallbackProviderId || 'fake-provider';
-    if (fallbackId && fallbackId !== targetProviderId) {
-      const fallbackProvider = this.registry.getProvider(fallbackId);
-      if (fallbackProvider.generateReplyStream) {
-        return fallbackProvider.generateReplyStream(enrichedRequest, onChunk, options);
-      }
-      return fallbackProvider.generateReply(enrichedRequest, options);
+      return primaryProvider.generateReplyStream(enrichedRequest, onChunk, options);
     }
 
     return primaryProvider.generateReply(enrichedRequest, options);
@@ -162,8 +174,8 @@ export class ProviderManager {
         return { success: false, error: 'Request was cancelled.' };
       }
 
-      // Timeout Controller
-      const timeoutMs = this.config.timeoutMs || 15000;
+      // Timeout Controller - Default to 30 seconds for cloud LLMs
+      const timeoutMs = this.config.timeoutMs || 30000;
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
@@ -180,11 +192,25 @@ export class ProviderManager {
           return lastResult;
         }
 
-        // Don't retry if invalid key or user cancelled
-        if (
-          lastResult.error?.includes('API Key') ||
-          lastResult.error?.includes('cancelled')
-        ) {
+        // Don't retry if client error, auth error, quota/billing limits, or user cancelled
+        const errLower = (lastResult.error || '').toLowerCase();
+        const isClientOrQuotaError =
+          errLower.includes('api key') ||
+          errLower.includes('unauthorized') ||
+          errLower.includes('forbidden') ||
+          errLower.includes('invalid') ||
+          errLower.includes('quota') ||
+          errLower.includes('billing') ||
+          errLower.includes('rate limit') ||
+          errLower.includes('limit exceeded') ||
+          errLower.includes('400') ||
+          errLower.includes('401') ||
+          errLower.includes('403') ||
+          errLower.includes('404') ||
+          errLower.includes('429') ||
+          errLower.includes('cancelled');
+
+        if (isClientOrQuotaError) {
           return lastResult;
         }
       } catch (err) {

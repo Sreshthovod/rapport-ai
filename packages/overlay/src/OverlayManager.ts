@@ -28,6 +28,7 @@ export class OverlayManager {
   // AI Modal States
   private aiModalVisible: boolean = false;
   private aiModalLoading: boolean = false;
+  private aiModalShowSettings: boolean = false;
   private streamingText: string = '';
   private aiModalData: FakeAIResponse | null = null;
   private aiModalError: string | null = null;
@@ -87,9 +88,27 @@ export class OverlayManager {
     }
   }
 
+  public openAIModal(): void {
+    this.aiModalVisible = true;
+    this.aiModalShowSettings = false;
+    if (this.onAIClickCallback) {
+      this.onAIClickCallback();
+    } else {
+      this.showAILoading();
+    }
+  }
+
+  public showAISettings(): void {
+    this.aiModalVisible = true;
+    this.aiModalShowSettings = true;
+    this.aiModalLoading = false;
+    this.render();
+  }
+
   public showAILoading(): void {
     this.aiModalVisible = true;
     this.aiModalLoading = true;
+    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = null;
@@ -100,12 +119,14 @@ export class OverlayManager {
     this.streamingText += chunk;
     this.aiModalVisible = true;
     this.aiModalLoading = true;
+    this.aiModalShowSettings = false;
     this.render();
   }
 
   public showAIResponse(data: FakeAIResponse): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = data;
     this.aiModalError = null;
@@ -115,6 +136,7 @@ export class OverlayManager {
   public showAIError(error: string): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = error;
@@ -124,6 +146,7 @@ export class OverlayManager {
   public closeAIModal(): void {
     this.aiModalVisible = false;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
     this.streamingText = '';
     this.render();
   }
@@ -178,20 +201,23 @@ export class OverlayManager {
     const maxLeft = Math.max(10, window.innerWidth - 100);
     const maxTop = Math.max(10, window.innerHeight - 50);
 
-    const clampedLeft = Math.max(10, Math.min(newLeft, maxLeft));
-    const clampedTop = Math.max(10, Math.min(newTop, maxTop));
-
-    this.customPosition = { top: clampedTop, left: clampedLeft };
+    this.customPosition = {
+      top: Math.min(Math.max(10, newTop), maxTop),
+      left: Math.min(Math.max(10, newLeft), maxLeft),
+    };
 
     const container = this.shadowHost.containerElement;
-    container.style.top = `${clampedTop}px`;
-    container.style.left = `${clampedLeft}px`;
+    container.style.top = `${this.customPosition.top}px`;
+    container.style.left = `${this.customPosition.left}px`;
   };
 
-  private handlePointerUp = (): void => {
-    if (!this.isDragging) return;
+  private handlePointerUp = (e: PointerEvent): void => {
     this.isDragging = false;
-
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
@@ -254,19 +280,13 @@ export class OverlayManager {
           visible: this.isVisible,
           pendingCommitmentText: this.pendingCommitmentText,
           onDragStart: this.handleDragStart,
-          onAIClick: () => {
-            if (this.onAIClickCallback) {
-              this.onAIClickCallback();
-            }
-          },
-          onSettingsClick: () => {
-            this.aiModalVisible = true;
-            this.render();
-          },
+          onAIClick: () => this.openAIModal(),
+          onSettingsClick: () => this.showAISettings(),
         }),
         React.createElement(AIModal, {
           visible: this.aiModalVisible,
           loading: this.aiModalLoading,
+          initialShowSettings: this.aiModalShowSettings,
           streamingText: this.streamingText,
           data: this.aiModalData,
           error: this.aiModalError,
@@ -274,6 +294,7 @@ export class OverlayManager {
           copilotTip: this.aiModalCopilotTip,
           onClose: () => this.closeAIModal(),
           onRegenerate: () => {
+            this.showAILoading();
             if (this.onAIClickCallback) {
               this.onAIClickCallback();
             }

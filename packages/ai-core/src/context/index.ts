@@ -29,3 +29,5 @@ export { HeuristicToneDetector } from './ToneDetector.js';
 export { ConversationStageAnalyzer } from './StageAnalyzer.js';
 export { ImportantFactExtractor } from './FactExtractor.js';
 export { ContextSummaryGenerator } from './SummaryGenerator.js';
+export { LanguageDetector } from './LanguageDetector.js';
+export { ReplyTargetResolver } from './ReplyTargetResolver.js';

@@ -1,9 +1,10 @@
+import { withTimeout } from '@rapport/shared';
+import { MemoryQuery, MemoryRecord, MemoryResult } from '../types/MemoryTypes.js';
+import { IMemoryStore } from './MemoryStore.js';
+
 // Declare chrome for extension context
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare const chrome: any;
-
-import { MemoryQuery, MemoryRecord, MemoryResult } from '../types/MemoryTypes.js';
-import { IMemoryStore } from './MemoryStore.js';
 
 export class BrowserStorageMemoryStore implements IMemoryStore {
   private static instance: BrowserStorageMemoryStore | null = null;
@@ -32,10 +33,13 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
 
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const result = await new Promise<Record<string, unknown>>((resolve) => {
-          chrome.storage.local.get([this.storageKey], (res: Record<string, unknown>) => resolve(res || {}));
-        });
-        const rawList = (result[this.storageKey] as MemoryRecord[]) || [];
+        const storagePromise = typeof chrome.storage.local.get === 'function'
+          ? chrome.storage.local.get([this.storageKey])
+          : new Promise<Record<string, unknown>>((resolve) => {
+              chrome.storage.local.get([this.storageKey], (res: Record<string, unknown>) => resolve(res || {}));
+            });
+        const result = (await withTimeout(storagePromise, 3000, 'BrowserStorageMemoryStore:loadAll')) as Record<string, unknown>;
+        const rawList = (result?.[this.storageKey] as MemoryRecord[]) || [];
         this.inMemoryMap.clear();
         rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
       } else if (typeof localStorage !== 'undefined') {
@@ -46,8 +50,8 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
           rawList.forEach((item) => this.inMemoryMap.set(item.id, item));
         }
       }
-    } catch {
-      // Storage unavailable fallback — use whatever is in memory
+    } catch (err) {
+      console.warn('[BrowserStorageMemoryStore] Storage load error/timeout:', err);
     }
 
     this.dirty = true;
@@ -58,14 +62,17 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
     const list = Array.from(this.inMemoryMap.values());
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await new Promise<void>((resolve) => {
-          chrome.storage.local.set({ [this.storageKey]: list }, () => resolve());
-        });
+        const storagePromise = typeof chrome.storage.local.set === 'function'
+          ? chrome.storage.local.set({ [this.storageKey]: list })
+          : new Promise<void>((resolve) => {
+              chrome.storage.local.set({ [this.storageKey]: list }, () => resolve());
+            });
+        await withTimeout(storagePromise, 3000, 'BrowserStorageMemoryStore:persistAll');
       } else if (typeof localStorage !== 'undefined') {
         localStorage.setItem(this.storageKey, JSON.stringify(list));
       }
-    } catch {
-      // Storage unavailable fallback
+    } catch (err) {
+      console.warn('[BrowserStorageMemoryStore] Storage persist error/timeout:', err);
     }
   }
 
@@ -114,7 +121,7 @@ export class BrowserStorageMemoryStore implements IMemoryStore {
     }
 
     if (query.tags && query.tags.length > 0) {
-      records = records.filter((r) => query.tags!.some((t) => r.tags.includes(t)));
+      records = records.filter((r) => query.tags!.some((t: string) => r.tags.includes(t)));
     }
 
     if (query.searchQuery) {

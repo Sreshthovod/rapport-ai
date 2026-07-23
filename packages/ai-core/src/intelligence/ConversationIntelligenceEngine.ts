@@ -2,10 +2,12 @@ import { CanonicalMessage, ConversationIntelligence } from '@rapport/shared';
 import { ConversationAnalyzer } from './ConversationAnalyzer.js';
 import { HealthAnalyzer } from './HealthAnalyzer.js';
 import { IntelligenceCache } from './IntelligenceCache.js';
+import { IntelligenceV2Analyzer } from './IntelligenceV2Analyzer.js';
 import { IntentAnalyzer } from './IntentAnalyzer.js';
 import { MultiToneAnalyzer } from './MultiToneAnalyzer.js';
 import { ObjectiveRecommender } from './ObjectiveRecommender.js';
 import { PendingContextAnalyzer } from './PendingContextAnalyzer.js';
+import { ReplyTargetResolver } from '../context/ReplyTargetResolver.js';
 
 export class ConversationIntelligenceEngine {
   private static cache = IntelligenceCache.getInstance();
@@ -41,7 +43,22 @@ export class ConversationIntelligenceEngine {
     // 5. Pending Context Items
     const pendingItems = PendingContextAnalyzer.analyzePendingItems(messages);
 
-    // 6. Recommended AI Objective Goal
+    // 6. Intelligence v2 Inferences
+    const replyTarget = ReplyTargetResolver.resolve(messages);
+    const stage = IntelligenceV2Analyzer.analyzeStage(messages, analysis.topic);
+    const latestIntent = IntelligenceV2Analyzer.analyzeLatestIntent(replyTarget, messages[messages.length - 1]);
+    const primaryEmotion = IntelligenceV2Analyzer.analyzeEmotion(messages);
+    const urgency = IntelligenceV2Analyzer.analyzeUrgency(messages);
+    const inferredRelationship = IntelligenceV2Analyzer.inferRelationship(messages);
+    const styleMetrics = IntelligenceV2Analyzer.analyzeStyle(messages);
+    const expectedReplyLength = styleMetrics.avgLength;
+    const suggestedStrategy = IntelligenceV2Analyzer.recommendStrategy({
+      stage,
+      latestIntent,
+      emotion: primaryEmotion,
+    });
+
+    // 7. Recommended AI Objective Goal
     const suggestedGoal = ObjectiveRecommender.recommendGoal({
       tones,
       intents,
@@ -56,6 +73,14 @@ export class ConversationIntelligenceEngine {
 
     const intelligence: ConversationIntelligence = {
       topic: analysis.topic,
+      stage,
+      latestIntent,
+      primaryEmotion,
+      urgency,
+      expectedReplyLength,
+      inferredRelationship,
+      styleMetrics,
+      suggestedStrategy,
       tones,
       intents,
       health,

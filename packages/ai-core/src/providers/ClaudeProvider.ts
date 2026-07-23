@@ -94,18 +94,27 @@ export class ClaudeProvider implements AIProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
+        let parsedMessage = errorText;
+        try {
+          const json = JSON.parse(errorText);
+          if (json?.error?.message) {
+            parsedMessage = json.error.message;
+          }
+        } catch {
+          // Keep raw
+        }
         this.metricsTracker.record({
           providerId: this.id,
           model,
           latencyMs,
           success: false,
           timestamp: Date.now(),
-          error: errorText,
+          error: parsedMessage,
         });
 
-        if (response.status === 401) return { success: false, error: 'Invalid Anthropic API Key.' };
-        if (response.status === 429) return { success: false, error: 'Anthropic Rate limit exceeded. Please try again shortly.' };
-        return { success: false, error: `Anthropic API Error (${response.status}): ${errorText}` };
+        if (response.status === 401) return { success: false, error: `Invalid Anthropic API Key: ${parsedMessage}` };
+        if (response.status === 429) return { success: false, error: `Anthropic Rate limit/Quota exceeded: ${parsedMessage}` };
+        return { success: false, error: `Anthropic API Error (${response.status}): ${parsedMessage}` };
       }
 
       const data = await response.json();
@@ -180,7 +189,8 @@ export class ClaudeProvider implements AIProvider {
     const temperature = (request.options?.temperature as number) ?? 0.7;
     const maxTokens = (request.options?.maxTokens as number) ?? 600;
 
-    const systemContent = compiledPrompt?.systemPrompt || 'You are an expert conversation copilot.';
+    const baseSystemPrompt = compiledPrompt?.systemPrompt || 'You are an expert conversation copilot.';
+    const systemContent = `${baseSystemPrompt}\n\n${SuggestionEngine.getStructuredOutputDirective()}`;
     const userContent = compiledPrompt?.userPrompt || request.prompt || 'Suggest helpful replies for this conversation.';
 
     try {
@@ -204,7 +214,16 @@ export class ClaudeProvider implements AIProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        return { success: false, error: `Anthropic Streaming API Error (${response.status}): ${errorText}` };
+        let parsedMessage = errorText;
+        try {
+          const json = JSON.parse(errorText);
+          if (json?.error?.message) {
+            parsedMessage = json.error.message;
+          }
+        } catch {
+          // Keep raw
+        }
+        return { success: false, error: `Anthropic Streaming API Error (${response.status}): ${parsedMessage}` };
       }
 
       const reader = response.body?.getReader();

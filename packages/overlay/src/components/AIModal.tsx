@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AISuggestion, CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
+import { AIPipelineInspector, AISuggestion, CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
+import { ProviderManager, SettingsManager } from '@rapport/ai-core';
 import { SettingsView } from './SettingsView.js';
+
+export const getProviderLabel = (providerId?: string): string => {
+  const norm = (providerId || '').toLowerCase();
+  if (norm.includes('openai') || norm === 'gpt-4o' || norm === 'gpt-4o-mini') return 'OpenAI';
+  if (norm.includes('claude') || norm.includes('anthropic')) return 'Claude';
+  if (norm.includes('gemini') || norm.includes('google')) return 'Gemini';
+  if (norm.includes('groq')) return 'Groq';
+  if (norm.includes('fake') || norm.includes('offline') || norm.includes('deterministic')) return 'Offline';
+  return providerId || 'Offline';
+};
 
 export interface AIModalProps {
   visible: boolean;
@@ -9,6 +20,7 @@ export interface AIModalProps {
   data?: FakeAIResponse | null;
   error?: string | null;
   compiledPrompt?: CompiledPromptSpec | null;
+  initialShowSettings?: boolean;
   onInsert?: (text: string) => void;
   onRegenerate?: () => void;
   onClose: () => void;
@@ -40,6 +52,7 @@ export const AIModal: React.FC<AIModalProps> = ({
   data,
   error,
   compiledPrompt,
+  initialShowSettings,
   onInsert,
   onRegenerate,
   onClose,
@@ -48,9 +61,15 @@ export const AIModal: React.FC<AIModalProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string>('All');
-  const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [showSettings, setShowSettings] = useState<boolean>(Boolean(initialShowSettings));
   const [showDevPanel, setShowDevPanel] = useState<boolean>(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (initialShowSettings !== undefined) {
+      setShowSettings(initialShowSettings);
+    }
+  }, [initialShowSettings]);
 
   // Dragging state
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -162,9 +181,11 @@ export const AIModal: React.FC<AIModalProps> = ({
     return bPin - aPin;
   });
 
-  // Extract Metadata Badges
+  // Extract Metadata Badges & Live Provider Info
+  const activeSettings = SettingsManager.getInstance().getSettings();
   const metadata = data?.metadata || {};
-  const providerId = (metadata.providerId as string) || data?.providerId || 'fake-provider';
+  const rawProviderId = (metadata.providerId as string) || data?.providerId || activeSettings.activeProviderId;
+  const displayProviderLabel = getProviderLabel(rawProviderId);
   const modelName = (metadata.model as string) || 'Default Model';
   const latencyMs = metadata.latencyMs ? `${metadata.latencyMs}ms` : null;
   const contextSignals = (metadata.contextSignals as any) || {};
@@ -222,7 +243,7 @@ export const AIModal: React.FC<AIModalProps> = ({
               border: '1px solid rgba(255, 255, 255, 0.1)',
             }}
           >
-            {providerId}
+            {displayProviderLabel}
           </span>
           {latencyMs && (
             <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>
@@ -232,36 +253,23 @@ export const AIModal: React.FC<AIModalProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            onClick={() => setShowDevPanel(!showDevPanel)}
-            style={{
-              background: showDevPanel ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '4px',
-              color: showDevPanel ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
-              cursor: 'pointer',
-              fontSize: '11px',
-              padding: '2px 6px',
-            }}
-            title="Toggle Developer Observability Inspector"
-          >
-            🛠️ Dev
-          </button>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              background: showSettings ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '4px',
-              color: showSettings ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
-              cursor: 'pointer',
-              fontSize: '11px',
-              padding: '2px 6px',
-            }}
-            title="Rapport Preferences"
-          >
-            ⚙️
-          </button>
+          {activeSettings.developerModeUnlocked && (
+            <button
+              onClick={() => setShowDevPanel(!showDevPanel)}
+              style={{
+                background: showDevPanel ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '4px',
+                color: showDevPanel ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
+                cursor: 'pointer',
+                fontSize: '11px',
+                padding: '2px 6px',
+              }}
+              title="Toggle Developer Observability Inspector"
+            >
+              🛠️ Dev
+            </button>
+          )}
           {onRegenerate && !loading && (
             <button
               onClick={onRegenerate}
@@ -299,7 +307,14 @@ export const AIModal: React.FC<AIModalProps> = ({
       {/* Embedded Settings Modal Overlay */}
       {showSettings && (
         <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-          <SettingsView onClose={() => setShowSettings(false)} />
+          <SettingsView
+            onClose={() => {
+              setShowSettings(false);
+              if (initialShowSettings) {
+                onClose();
+              }
+            }}
+          />
         </div>
       )}
 
@@ -550,34 +565,93 @@ export const AIModal: React.FC<AIModalProps> = ({
             )}
           </div>
 
-          {/* Developer Observability Drawer Panel */}
-          {showDevPanel && compiledPrompt && (
-            <div
-              style={{
-                marginTop: '10px',
-                padding: '10px',
-                background: 'rgba(0, 0, 0, 0.35)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '8px',
-                fontSize: '11px',
-                maxHeight: '160px',
-                overflowY: 'auto',
-                fontFamily: 'monospace',
-                flexShrink: 0,
-              }}
-            >
-              <div style={{ color: 'var(--rapport-accent, #00a884)', fontWeight: 'bold', marginBottom: '4px' }}>
-                🛠️ REAL-TIME AI PIPELINE INSPECTOR (v{compiledPrompt.version})
-              </div>
-              <div>Goal: {compiledPrompt.goal}</div>
-              <div>Relationship: {compiledPrompt.contextSnapshot.relationshipType}</div>
-              <div>Tone: {compiledPrompt.contextSnapshot.detectedTone}</div>
-              <div>Topic: {compiledPrompt.contextSnapshot.conversationSummary.slice(0, 60)}</div>
-              <div style={{ marginTop: '4px', color: '#9ca3af' }}>System Prompt Preview:</div>
-              <div style={{ whiteSpace: 'pre-wrap', color: '#d1d5db', background: 'rgba(0,0,0,0.4)', padding: '4px', borderRadius: '4px' }}>
-                {compiledPrompt.systemPrompt.slice(0, 200)}...
-              </div>
-            </div>
+          {/* Developer Observability & Pipeline Diagnostics Drawer Panel */}
+          {showDevPanel && (
+            (() => {
+              const diag = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+                ? AIPipelineInspector.getInstance().getDiagnosticsSummary()
+                : {
+                    currentStage: 'Idle',
+                    totalDurationMs: 0,
+                    success: true,
+                    provider: 'N/A',
+                    model: 'N/A',
+                    promptLength: 0,
+                    stageTimings: [],
+                  };
+              const systemPromptLen = compiledPrompt?.systemPrompt?.length || 0;
+              const userPromptLen = compiledPrompt?.userPrompt?.length || 0;
+              const totalPromptLen = systemPromptLen + userPromptLen || diag.promptLength;
+
+              return (
+                <div
+                  style={{
+                    marginTop: '10px',
+                    padding: '10px',
+                    background: 'rgba(0, 0, 0, 0.45)',
+                    border: '1px solid rgba(0, 168, 132, 0.3)',
+                    borderRadius: '8px',
+                    fontSize: '10.5px',
+                    maxHeight: '180px',
+                    overflowY: 'auto',
+                    fontFamily: 'monospace',
+                    flexShrink: 0,
+                    color: '#e5e7eb',
+                  }}
+                >
+                  <div style={{ color: 'var(--rapport-accent, #00a884)', fontWeight: 'bold', marginBottom: '6px' }}>
+                    🛠️ PIPELINE DIAGNOSTICS & STAGE TRACE
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '6px' }}>
+                    <div><span style={{ color: '#9ca3af' }}>Current Stage:</span> {diag.currentStage}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Total Latency:</span> {diag.totalDurationMs ? `${diag.totalDurationMs}ms` : (latencyMs ? `${latencyMs}ms` : 'In Progress')}</div>
+                    <div>
+                      <span style={{ color: '#9ca3af' }}>Status:</span>{' '}
+                      <span style={{ color: error || !diag.success ? '#ef4444' : '#10b981', fontWeight: 600 }}>
+                        {error || !diag.success ? '❌ Failed' : '✅ Success'}
+                      </span>
+                    </div>
+                    <div><span style={{ color: '#9ca3af' }}>Provider:</span> {displayProviderLabel} ({rawProviderId})</div>
+                    <div><span style={{ color: '#9ca3af' }}>Model:</span> {modelName}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Prompt Length:</span> {totalPromptLen} chars</div>
+                    <div><span style={{ color: '#9ca3af' }}>Completion Tokens:</span> {diag.completionTokens ?? 'N/A'}</div>
+                    <div><span style={{ color: '#9ca3af' }}>Finish Reason:</span> {diag.finishReason}</div>
+                  </div>
+
+                  {(error || diag.lastError) && (
+                    <div style={{ color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '4px 6px', borderRadius: '4px', marginBottom: '6px' }}>
+                      ⚠️ Last Error: {error || diag.lastError}
+                    </div>
+                  )}
+
+                  <div style={{ fontWeight: 600, color: '#9ca3af', marginBottom: '4px' }}>Stage Timings Breakdown:</div>
+                  {diag.stageTimings.length === 0 ? (
+                    <div style={{ color: '#6b7280', fontStyle: 'italic' }}>No stage timings recorded yet. Click ✨ Generate to run pipeline.</div>
+                  ) : (
+                    diag.stageTimings.map((st, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ color: st.status === 'error' ? '#ef4444' : st.status === 'timeout' ? '#f59e0b' : '#d1d5db' }}>
+                          {st.stage}
+                        </span>
+                        <span style={{ color: st.status === 'ok' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                          {st.durationMs}ms {st.status !== 'ok' ? `(${st.status.toUpperCase()})` : ''}
+                        </span>
+                      </div>
+                    ))
+                  )}
+
+                  {compiledPrompt && (
+                    <>
+                      <div style={{ marginTop: '6px', color: '#9ca3af', fontWeight: 600 }}>System Prompt Preview:</div>
+                      <div style={{ whiteSpace: 'pre-wrap', color: '#9ca3af', background: 'rgba(0,0,0,0.4)', padding: '4px', borderRadius: '4px', fontSize: '10px' }}>
+                        {compiledPrompt.systemPrompt.slice(0, 160)}...
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()
           )}
         </>
       )}

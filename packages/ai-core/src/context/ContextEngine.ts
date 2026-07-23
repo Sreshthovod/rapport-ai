@@ -14,30 +14,29 @@ import { MessageNormalizer } from './Normalizer.js';
 import { ConversationStageAnalyzer } from './StageAnalyzer.js';
 import { ContextSummaryGenerator } from './SummaryGenerator.js';
 import { HeuristicToneDetector } from './ToneDetector.js';
+import { LanguageDetector } from './LanguageDetector.js';
+import { ReplyTargetResolver } from './ReplyTargetResolver.js';
 
 export class ContextEngine {
   public static processContext(rawContext: ConversationContext): StructuredAIContext {
+    const inspector = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+      ? AIPipelineInspector.getInstance()
+      : null;
+    
+    // [1] Conversation Parsed
+    inspector?.startStage('[1] Conversation Parsed');
     const rawMessages: ChatMessage[] = rawContext?.recentMessages || [];
     const draftText: string = rawContext?.draft || '';
     const contactId: string = rawContext?.contact?.id || 'unknown';
     const contactName: string = rawContext?.contact?.contactName || 'Contact';
 
-    // 1. Normalization
     const recentMessages = MessageNormalizer.normalizeMessages(rawMessages);
-
-    // 2. Conversation Timeline & Model
     const conversation = ConversationModelBuilder.buildModel(recentMessages);
-
-    // 3. Tone Detection
     const tone = HeuristicToneDetector.detectTone(recentMessages, draftText);
-
-    // 4. Conversation Stage Inferencing
     const stage = ConversationStageAnalyzer.inferStage(recentMessages, draftText);
-
-    // 5. Important Fact Extraction
+    const language = LanguageDetector.detectLanguage(recentMessages, draftText);
+    const replyTarget = ReplyTargetResolver.resolve(recentMessages);
     const extractedFacts = ImportantFactExtractor.extractFacts(recentMessages);
-
-    // 6. Context Summary Generation
     const summary = ContextSummaryGenerator.generateSummary({
       messages: recentMessages,
       tone,
@@ -45,28 +44,34 @@ export class ContextEngine {
       facts: extractedFacts,
       draftText,
     });
-
     const pendingQuestions = summary.pendingQuestions;
+    inspector?.endStage('[1] Conversation Parsed', { messageCount: recentMessages.length });
 
-    // 7. Conversation Intelligence Engine Analysis
+    // [2] Conversation Intelligence
+    inspector?.startStage('[2] Conversation Intelligence');
     const intelligence = ConversationIntelligenceEngine.analyze({
       messages: recentMessages,
       contactId,
       draftText,
     });
+    inspector?.endStage('[2] Conversation Intelligence', { intentCount: intelligence.intents?.length || 0 });
 
-    // 8. Relationship Context Engine Evaluation
+    // [3] Relationship Context
+    inspector?.startStage('[3] Relationship Context');
     const relationship = RelationshipEngine.getInstance().getRelationshipContextSync({
       contactId,
       contactName,
       messages: recentMessages,
     });
+    inspector?.endStage('[3] Relationship Context', { relationshipType: relationship.relationshipType });
 
     return {
       conversation,
       summary,
       tone,
       stage,
+      language,
+      replyTarget,
       recentMessages,
       extractedFacts,
       pendingQuestions,
@@ -76,51 +81,34 @@ export class ContextEngine {
   }
 
   public static async processContextAsync(rawContext: ConversationContext): Promise<StructuredAIContext> {
-    const inspector = AIPipelineInspector.getInstance();
+    const inspector = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+      ? AIPipelineInspector.getInstance()
+      : null;
 
-    // Run synchronous pipeline stages
-    const t0 = Date.now();
     const baseContext = ContextEngine.processContext(rawContext);
-
-    if (DEBUG_AI_PIPELINE) {
-      inspector.trace('ContextEngine:sync', {
-        tone: baseContext.tone,
-        stage: baseContext.stage,
-        messageCount: baseContext.recentMessages.length,
-        topic: baseContext.summary?.currentTopic,
-      }, Date.now() - t0);
-    }
-
     const contactId = rawContext?.contact?.id || 'unknown';
 
-    // Resilient async memory retrieval — failure never blocks the AI request
+    // [4] Memory Retrieval with 3-second resilient timeout limit
+    inspector?.startStage('[4] Memory Retrieval');
     try {
-      const t1 = Date.now();
-      const memoryContext = await MemoryRetriever.getInstance().retrieveMemoryContext({
+      const memoryPromise = MemoryRetriever.getInstance().retrieveMemoryContext({
         contactId,
         currentTopic: baseContext.summary?.currentTopic,
         recentKeywords: baseContext.summary?.pendingQuestions || [],
       });
 
-      if (DEBUG_AI_PIPELINE) {
-        inspector.trace('MemoryRetriever', {
-          totalEvaluated: memoryContext.retrievalMetadata.totalEvaluated,
-          totalReturned: memoryContext.retrievalMetadata.totalReturned,
-          relevantMemoryTitles: memoryContext.relevantMemories.map((m) => m.title),
-        }, Date.now() - t1);
-      }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Memory retrieval 3-second timeout limit exceeded')), 3000);
+      });
 
-      // Warn in dev if no memories were found for a known contact
-      if (DEBUG_AI_PIPELINE && memoryContext.relevantMemories.length === 0 && contactId !== 'unknown') {
-        console.debug(`[ContextEngine] ⚠️ No memories retrieved for contact "${contactId}". Memory store may be empty.`);
-      }
-
+      const memoryContext = await Promise.race([memoryPromise, timeoutPromise]);
+      if (timer) clearTimeout(timer);
+      inspector?.endStage('[4] Memory Retrieval', { returnedCount: memoryContext.relevantMemories.length });
       return { ...baseContext, memoryContext };
     } catch (err) {
-      // Resilient fallback: memory failure must never break the AI request
-      if (DEBUG_AI_PIPELINE) {
-        console.warn('[ContextEngine] Memory retrieval failed — continuing without memory context:', err);
-      }
+      inspector?.endStage('[4] Memory Retrieval', { error: err instanceof Error ? err.message : String(err) }, true);
+      console.warn('[ContextEngine] Memory retrieval failed/timed out — continuing with base context:', err);
       return baseContext;
     }
   }

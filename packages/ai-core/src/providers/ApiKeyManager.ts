@@ -1,4 +1,4 @@
-import { ProviderKeyStatus } from '@rapport/shared';
+import { ProviderKeyStatus, withTimeout } from '@rapport/shared';
 
 // Declare chrome for browser extension context
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,14 +56,17 @@ export class ApiKeyManager {
 
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await new Promise<void>((resolve) => {
-          chrome.storage.local.set({ [`rapport_key_${providerId}`]: obfuscated }, () => resolve());
-        });
+        const storagePromise = typeof chrome.storage.local.set === 'function'
+          ? chrome.storage.local.set({ [`rapport_key_${providerId}`]: obfuscated })
+          : new Promise<void>((resolve) => {
+              chrome.storage.local.set({ [`rapport_key_${providerId}`]: obfuscated }, () => resolve());
+            });
+        await withTimeout(storagePromise, 3000, `ApiKeyManager:setKey:${providerId}`);
       } else if (typeof localStorage !== 'undefined') {
         localStorage.setItem(`rapport_key_${providerId}`, obfuscated);
       }
-    } catch {
-      // Storage unavailable, retained in memory
+    } catch (err) {
+      console.warn(`[ApiKeyManager] Storage error/timeout setting key for ${providerId}:`, err);
     }
 
     this.validationCache.set(providerId, {
@@ -81,10 +84,13 @@ export class ApiKeyManager {
     try {
       let rawStored: string | null = null;
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const result = await new Promise<Record<string, unknown>>((resolve) => {
-          chrome.storage.local.get([`rapport_key_${providerId}`], (res: Record<string, unknown>) => resolve(res || {}));
-        });
-        rawStored = (result[`rapport_key_${providerId}`] as string) || null;
+        const storagePromise = typeof chrome.storage.local.get === 'function'
+          ? chrome.storage.local.get([`rapport_key_${providerId}`])
+          : new Promise<Record<string, unknown>>((resolve) => {
+              chrome.storage.local.get([`rapport_key_${providerId}`], (res: Record<string, unknown>) => resolve(res || {}));
+            });
+        const result = (await withTimeout(storagePromise, 3000, `ApiKeyManager:getKey:${providerId}`)) as Record<string, unknown>;
+        rawStored = (result?.[`rapport_key_${providerId}`] as string) || null;
       } else if (typeof localStorage !== 'undefined') {
         rawStored = localStorage.getItem(`rapport_key_${providerId}`);
       }
@@ -96,8 +102,8 @@ export class ApiKeyManager {
           return key;
         }
       }
-    } catch {
-      // Storage unavailable
+    } catch (err) {
+      console.warn(`[ApiKeyManager] Storage error/timeout getting key for ${providerId}:`, err);
     }
 
     return null;
@@ -108,14 +114,17 @@ export class ApiKeyManager {
     this.validationCache.delete(providerId);
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        await new Promise<void>((resolve) => {
-          chrome.storage.local.remove([`rapport_key_${providerId}`], () => resolve());
-        });
+        const storagePromise = typeof chrome.storage.local.remove === 'function'
+          ? chrome.storage.local.remove([`rapport_key_${providerId}`])
+          : new Promise<void>((resolve) => {
+              chrome.storage.local.remove([`rapport_key_${providerId}`], () => resolve());
+            });
+        await withTimeout(storagePromise, 3000, `ApiKeyManager:deleteKey:${providerId}`);
       } else if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(`rapport_key_${providerId}`);
       }
-    } catch {
-      // Storage unavailable
+    } catch (err) {
+      console.warn(`[ApiKeyManager] Storage error/timeout deleting key for ${providerId}:`, err);
     }
   }
 
@@ -127,5 +136,10 @@ export class ApiKeyManager {
       isValidated: cached ? cached.isValidated : Boolean(key && key.length > 0),
       lastChecked: cached?.lastChecked,
     };
+  }
+
+  public clearMemoryCache(): void {
+    this.memoryKeys.clear();
+    this.validationCache.clear();
   }
 }

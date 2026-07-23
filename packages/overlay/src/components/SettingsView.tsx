@@ -7,6 +7,7 @@ import {
   ThemePreference,
 } from '@rapport/shared';
 import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager } from '@rapport/ai-core';
+import { BrowserStorageMemoryStore } from '@rapport/memory';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Interfaces
@@ -49,10 +50,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   const [settings, setSettings] = useState<RapportSettings>(settingsManager.getSettings());
   const [activeTab, setActiveTab] = useState<PreferencesTab>('provider');
 
+  // Memory Statistics state
+  const [memStats, setMemStats] = useState({ totalMemories: 0, totalContacts: 0, storageSizeBytes: 0 });
+
+  const refreshMemStats = useCallback(() => {
+    settingsManager.getMemoryStatisticsAsync().then(setMemStats).catch(() => {});
+  }, [settingsManager]);
+
+  useEffect(() => {
+    if (activeTab === 'memory') {
+      refreshMemStats();
+    }
+  }, [activeTab, refreshMemStats]);
+
   // API Keys state
   const [openaiKey, setOpenaiKey] = useState('');
   const [claudeKey, setClaudeKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
+  const [groqKey, setGroqKey] = useState('');
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [keyStatuses, setKeyStatuses] = useState<Record<string, 'connected' | 'invalid' | 'missing'>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
@@ -289,13 +304,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     const o = await keyManager.getKey('openai');
     const c = await keyManager.getKey('claude');
     const g = await keyManager.getKey('gemini');
+    const gr = await keyManager.getKey('groq');
 
     setOpenaiKey(o || '');
     setClaudeKey(c || '');
     setGeminiKey(g || '');
+    setGroqKey(gr || '');
 
     const statuses: Record<string, 'connected' | 'invalid' | 'missing'> = {};
-    for (const pid of ['openai', 'claude', 'gemini']) {
+    for (const pid of ['openai', 'claude', 'gemini', 'groq']) {
       const stat = await keyManager.getKeyStatus(pid);
       statuses[pid] = stat.hasKey ? (stat.isValidated ? 'connected' : 'invalid') : 'missing';
     }
@@ -304,12 +321,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
 
   const handleSaveKey = async (providerId: string, val: string) => {
     const cleanKey = val.trim();
+    const providerName = providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : providerId === 'gemini' ? 'Gemini' : 'Groq';
     if (cleanKey) {
       await keyManager.setKey(providerId, cleanKey);
-      addToast(`${providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : 'Gemini'} key saved`, 'success');
+      addToast(`${providerName} key saved`, 'success');
     } else {
       await keyManager.deleteKey(providerId);
-      addToast(`${providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : 'Gemini'} key removed`, 'info');
+      addToast(`${providerName} key removed`, 'info');
     }
     await loadKeys();
   };
@@ -319,7 +337,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     if (providerId === 'openai') setOpenaiKey('');
     if (providerId === 'claude') setClaudeKey('');
     if (providerId === 'gemini') setGeminiKey('');
-    addToast(`${providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : 'Gemini'} key removed`, 'info');
+    if (providerId === 'groq') setGroqKey('');
+    const providerName = providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : providerId === 'gemini' ? 'Gemini' : 'Groq';
+    addToast(`${providerName} key removed`, 'info');
     await loadKeys();
   };
 
@@ -334,10 +354,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
           ? { message: 'Connection successful', success: true }
           : { message: 'Connection failed', success: false },
       }));
+      const providerName = providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : providerId === 'gemini' ? 'Gemini' : 'Groq';
       if (isValid) {
-        addToast(`${providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : 'Gemini'} verified`, 'success');
+        addToast(`${providerName} verified`, 'success');
       } else {
-        addToast(`${providerId === 'openai' ? 'OpenAI' : providerId === 'claude' ? 'Claude' : 'Gemini'} failed`, 'error');
+        addToast(`${providerName} failed`, 'error');
       }
     } catch {
       setTestResult((prev) => ({
@@ -350,8 +371,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
     await loadKeys();
   };
 
-  const handleUpdate = (updates: Partial<RapportSettings>) => {
-    settingsManager.updateSettings(updates);
+  const handleUpdate = async (updates: Partial<RapportSettings>) => {
+    const updated = await settingsManager.updateSettings(updates);
+    setSettings(updated);
   };
 
   const handleVersionClick = () => {
@@ -614,12 +636,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                       title: 'Google Gemini Engine',
                       desc: 'Powered by Gemini 2.5. Highly efficient for long chats.',
                     },
+                    {
+                      id: 'groq' as LLMProviderId,
+                      title: 'Groq Cloud Engine',
+                      desc: 'Powered by LLaMA 3.3. Blazing fast response generation.',
+                    },
                   ].map((p) => {
                     const isSelected = settings.activeProviderId === p.id;
-                    const isDisabled = settings.localOnlyMode && p.id !== 'fake-provider';
                     return (
-                      <label
+                      <div
                         key={p.id}
+                        onClick={() =>
+                          handleUpdate({
+                            activeProviderId: p.id,
+                            localOnlyMode: p.id === 'fake-provider',
+                          })
+                        }
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -628,8 +660,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                           borderRadius: C.radius,
                           border: `1px solid ${isSelected ? C.accent : C.border}`,
                           background: isSelected ? C.accentMuted : 'transparent',
-                          cursor: isDisabled ? 'not-allowed' : 'pointer',
-                          opacity: isDisabled ? 0.45 : 1,
+                          cursor: 'pointer',
                           transition: `all ${C.transition}`,
                         }}
                       >
@@ -638,9 +669,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                             type="radio"
                             name="activeProviderId"
                             checked={isSelected}
-                            disabled={isDisabled}
-                            onChange={() => handleUpdate({ activeProviderId: p.id })}
-                            style={{ accentColor: C.accent }}
+                            onChange={() =>
+                              handleUpdate({
+                                activeProviderId: p.id,
+                                localOnlyMode: p.id === 'fake-provider',
+                              })
+                            }
+                            style={{ accentColor: C.accent, cursor: 'pointer' }}
                           />
                           <div>
                             <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary }}>
@@ -652,7 +687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                           </div>
                         </div>
                         {providerReadyBadge(p.id)}
-                      </label>
+                      </div>
                     );
                   })}
                 </div>
@@ -668,6 +703,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                     { id: 'openai', name: 'OpenAI API Key', keyVal: openaiKey, setKeyVal: setOpenaiKey, ph: 'sk-proj-...' },
                     { id: 'claude', name: 'Claude API Key', keyVal: claudeKey, setKeyVal: setClaudeKey, ph: 'sk-ant-...' },
                     { id: 'gemini', name: 'Gemini API Key', keyVal: geminiKey, setKeyVal: setGeminiKey, ph: 'AIzaSy...' },
+                    { id: 'groq', name: 'Groq API Key', keyVal: groqKey, setKeyVal: setGroqKey, ph: 'gsk_...' },
                   ])
                     .filter((k) => k.id === settings.activeProviderId)
                     .map((k) => (
@@ -745,7 +781,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                           ? settings.openaiModel
                           : settings.activeProviderId === 'claude'
                           ? settings.claudeModel
-                          : settings.geminiModel
+                          : settings.activeProviderId === 'gemini'
+                          ? settings.geminiModel
+                          : settings.groqModel
                       }
                       onChange={(e) => {
                         const key =
@@ -753,7 +791,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                             ? 'openaiModel'
                             : settings.activeProviderId === 'claude'
                             ? 'claudeModel'
-                            : 'geminiModel';
+                            : settings.activeProviderId === 'gemini'
+                            ? 'geminiModel'
+                            : 'groqModel';
                         handleUpdate({ [key]: e.target.value });
                       }}
                       style={S.select}
@@ -956,6 +996,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                 title="Memory System"
                 subtitle="Configure the long-term memory engine that recalls facts and context about contacts."
               />
+
+              <div
+                style={{
+                  background: C.bgInput,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: '8px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-around',
+                }}
+              >
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
+                    Extracted Memories
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.accent }}>
+                    {memStats.totalMemories}
+                  </div>
+                </div>
+                <div style={{ width: '1px', height: '24px', background: C.border }} />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
+                    Contacts Remembered
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.textPrimary }}>
+                    {memStats.totalContacts}
+                  </div>
+                </div>
+                <div style={{ width: '1px', height: '24px', background: C.border }} />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: C.textSecondary, fontWeight: 500, marginBottom: '2px' }}>
+                    Database Size
+                  </div>
+                  <div style={{ fontSize: '18px', fontWeight: 700, color: C.textPrimary }}>
+                    {(memStats.storageSizeBytes / 1024).toFixed(1)} KB
+                  </div>
+                </div>
+              </div>
 
               <ToggleRow
                 label="Remember Preferences"

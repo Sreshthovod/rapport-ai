@@ -3,7 +3,9 @@ import { AIPipelineInspector } from '@rapport/shared';
 import { DEBUG_AI_PIPELINE } from '../prompts/PromptComposer.js';
 import { ContextEngine } from '../context/ContextEngine.js';
 import { PromptComposer } from '../prompts/PromptComposer.js';
+import { ApiKeyManager } from '../providers/ApiKeyManager.js';
 import { ProviderManager } from '../providers/ProviderManager.js';
+import { SettingsManager } from './SettingsManager.js';
 
 export class AIService {
   private readonly providerManager: ProviderManager;
@@ -16,7 +18,10 @@ export class AIService {
     request: AIRequest,
     options?: { signal?: AbortSignal }
   ): Promise<ProviderResult> {
-    const inspector = AIPipelineInspector.getInstance();
+    const inspector = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+      ? AIPipelineInspector.getInstance()
+      : null;
+    const startTime = Date.now();
 
     try {
       if (!request || !request.conversation) {
@@ -32,7 +37,7 @@ export class AIService {
         || await ContextEngine.processContextAsync(request.conversation);
 
       if (DEBUG_AI_PIPELINE) {
-        inspector.trace('ContextEngine', {
+        inspector?.trace('ContextEngine', {
           tone: structuredContext.tone,
           stage: structuredContext.stage,
           messageCount: structuredContext.recentMessages.length,
@@ -49,7 +54,7 @@ export class AIService {
       });
 
       if (DEBUG_AI_PIPELINE) {
-        inspector.trace('PromptComposer', {
+        inspector?.trace('PromptComposer', {
           goal: compiledPrompt.goal,
           systemPromptLength: compiledPrompt.systemPrompt.length,
           userPromptLength: compiledPrompt.userPrompt.length,
@@ -63,15 +68,64 @@ export class AIService {
         compiledPrompt,
       };
 
-      // 3. Route to active provider with automatic fallback
-      const result = await this.providerManager.executeWithFallback(enrichedRequest, options);
+      // Extract development logging parameters
+      const settings = SettingsManager.getInstance().getSettings();
+      const selectedProvider = settings.activeProviderId;
+      const resolvedProvider = enrichedRequest.providerId || this.providerManager.getActiveProviderId();
+      const selectedModel = (request.options?.model as string) || this.providerManager.getConfig().model || settings.openaiModel;
+      const language = settings.language || 'en';
+      const keyStatus = await ApiKeyManager.getInstance().getKeyStatus(selectedProvider);
+      const promptLength = (compiledPrompt.systemPrompt?.length || 0) + (compiledPrompt.userPrompt?.length || 0);
 
-      if (DEBUG_AI_PIPELINE) {
-        inspector.trace('Provider', {
-          success: result.success,
-          providerId: result.data?.providerId,
-          error: result.error,
-        });
+      console.log(`[Rapport AI:Pipeline] Request Started at ${new Date(startTime).toISOString()}`);
+      console.log(`[Rapport AI:Pipeline] Request Configuration:`, {
+        'Selected Provider': selectedProvider,
+        'Resolved Provider': resolvedProvider,
+        'Selected Model': selectedModel,
+        'API Key Status': keyStatus.hasKey ? 'Configured' : 'Missing',
+        'Language': language,
+        'Prompt Length': promptLength,
+      });
+
+      // 3. Route to active provider
+      inspector?.startStage('[6] Provider Request');
+      const result = await this.providerManager.executeWithFallback(enrichedRequest, options);
+      const finishTime = Date.now();
+      const totalDurationMs = finishTime - startTime;
+      const providerUsed = result.data?.providerId || resolvedProvider;
+
+      inspector?.endStage('[6] Provider Request', {
+        provider: providerUsed,
+        success: result.success,
+        tokens: result.data?.metadata?.tokens,
+      }, !result.success);
+
+      // 4. Provider Response Parsed
+      inspector?.startStage('[7] Provider Response Parsed');
+      const suggestionCount = result.data?.suggestions?.length || (result.data?.suggestedReply ? 1 : 0);
+      inspector?.endStage('[7] Provider Response Parsed', { suggestionCount }, !result.success);
+
+      console.log(`[Rapport AI:Pipeline] Request Finished at ${new Date(finishTime).toISOString()} (Duration: ${totalDurationMs}ms)`);
+      console.log(`[Rapport AI:Pipeline] Provider Used: "${providerUsed}"`);
+
+      // Update Dev Observability Diagnostics Summary
+      inspector?.updateDiagnostics({
+        currentStage: 'Completed',
+        totalDurationMs,
+        success: result.success,
+        provider: providerUsed,
+        model: selectedModel,
+        promptLength,
+        completionTokens: result.data?.metadata?.tokens as number | undefined,
+        finishReason: result.success ? 'stop' : 'error',
+        lastError: result.error,
+      });
+
+      // Throw warning immediately if Provider Used != Selected Provider
+      if (selectedProvider !== 'fake-provider' && providerUsed !== selectedProvider) {
+        console.warn(
+          `[Rapport AI:WARNING] Provider mismatch detected! Selected Provider is "${selectedProvider}", but Provider Used was "${providerUsed}".`
+        );
       }
 
       return result;

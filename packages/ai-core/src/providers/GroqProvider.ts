@@ -9,20 +9,20 @@ import { ApiKeyManager } from './ApiKeyManager.js';
 import { MetricsTracker } from './MetricsTracker.js';
 import { SuggestionEngine } from '../prompts/SuggestionEngine.js';
 
-export class GeminiProvider implements AIProvider {
-  public readonly id = 'gemini';
-  public readonly name = 'Google Gemini Provider';
+export class GroqProvider implements AIProvider {
+  public readonly id = 'groq';
+  public readonly name = 'Groq Cloud Provider';
 
   public readonly capabilities: ProviderCapabilities = {
     supportsStreaming: true,
-    supportsVision: true,
+    supportsVision: false,
     supportsCustomSystemPrompts: true,
-    maxContextTokens: 1000000,
+    maxContextTokens: 32768,
     supportedModels: [
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash',
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'mixtral-8x7b-32768',
+      'gemma2-9b-it',
     ],
   };
 
@@ -31,14 +31,10 @@ export class GeminiProvider implements AIProvider {
 
   public async validateKey(apiKey: string): Promise<boolean> {
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: 'Ping' }] }] }),
-        }
-      );
+      const res = await fetch('https://api.groq.com/openai/v1/models', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
       return res.status === 200;
     } catch {
       return false;
@@ -55,12 +51,12 @@ export class GeminiProvider implements AIProvider {
     if (!apiKey) {
       return {
         success: false,
-        error: 'Missing Google Gemini API Key. Please configure your API key in extension settings.',
+        error: 'Missing Groq API Key. Please configure your API key in extension settings.',
       };
     }
 
     const compiledPrompt = request.compiledPrompt;
-    const model = (request.options?.model as string) || 'gemini-2.5-flash';
+    const model = (request.options?.model as string) || 'llama-3.3-70b-versatile';
     const temperature = (request.options?.temperature as number) ?? 0.7;
     const maxTokens = (request.options?.maxTokens as number) ?? 600;
 
@@ -69,18 +65,21 @@ export class GeminiProvider implements AIProvider {
     const userContent = compiledPrompt?.userPrompt || request.prompt || 'Suggest helpful replies for this conversation.';
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
         signal: options?.signal,
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemContent }] },
-          contents: [{ parts: [{ text: userContent }] }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-          },
+          model,
+          messages: [
+            { role: 'system', content: systemContent },
+            { role: 'user', content: userContent },
+          ],
+          temperature,
+          max_tokens: maxTokens,
         }),
       });
 
@@ -106,14 +105,14 @@ export class GeminiProvider implements AIProvider {
           error: parsedMessage,
         });
 
-        if (response.status === 400 || response.status === 403) return { success: false, error: `Invalid Google Gemini API Key or permissions: ${parsedMessage}` };
-        if (response.status === 429) return { success: false, error: `Gemini Rate limit/Quota exceeded: ${parsedMessage}` };
-        return { success: false, error: `Gemini API Error (${response.status}): ${parsedMessage}` };
+        if (response.status === 401) return { success: false, error: `Invalid Groq API Key: ${parsedMessage}` };
+        if (response.status === 429) return { success: false, error: `Groq Rate limit/Quota exceeded: ${parsedMessage}` };
+        return { success: false, error: `Groq API Error (${response.status}): ${parsedMessage}` };
       }
 
       const data = await response.json();
-      const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const usageTokens = data?.usageMetadata?.totalTokenCount;
+      const content = data?.choices?.[0]?.message?.content || '';
+      const usageTokens = data?.usage?.total_tokens;
 
       this.metricsTracker.record({
         providerId: this.id,
@@ -132,7 +131,7 @@ export class GeminiProvider implements AIProvider {
         success: true,
         data: {
           suggestedReply: primarySuggestion,
-          reasoning: `Generated by Google Gemini (${model}).`,
+          reasoning: `Generated by Groq ${model} model.`,
           tone: suggestions[0]?.tone || fallbackTone,
           providerId: this.id,
           suggestions,
@@ -145,7 +144,7 @@ export class GeminiProvider implements AIProvider {
       };
     } catch (err) {
       const latencyMs = Date.now() - startTime;
-      const errorMsg = err instanceof Error ? err.message : 'Gemini network error';
+      const errorMsg = err instanceof Error ? err.message : 'Groq network error';
       this.metricsTracker.record({
         providerId: this.id,
         model,
@@ -174,12 +173,12 @@ export class GeminiProvider implements AIProvider {
     if (!apiKey) {
       return {
         success: false,
-        error: 'Missing Google Gemini API Key. Please configure your API key in extension settings.',
+        error: 'Missing Groq API Key. Please configure your API key in extension settings.',
       };
     }
 
     const compiledPrompt = request.compiledPrompt;
-    const model = (request.options?.model as string) || 'gemini-2.5-flash';
+    const model = (request.options?.model as string) || 'llama-3.3-70b-versatile';
     const temperature = (request.options?.temperature as number) ?? 0.7;
     const maxTokens = (request.options?.maxTokens as number) ?? 600;
 
@@ -188,18 +187,22 @@ export class GeminiProvider implements AIProvider {
     const userContent = compiledPrompt?.userPrompt || request.prompt || 'Suggest helpful replies for this conversation.';
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-      const response = await fetch(url, {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
         signal: options?.signal,
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemContent }] },
-          contents: [{ parts: [{ text: userContent }] }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-          },
+          model,
+          messages: [
+            { role: 'system', content: systemContent },
+            { role: 'user', content: userContent },
+          ],
+          temperature,
+          max_tokens: maxTokens,
+          stream: true,
         }),
       });
 
@@ -214,12 +217,14 @@ export class GeminiProvider implements AIProvider {
         } catch {
           // Keep raw
         }
-        return { success: false, error: `Gemini Streaming Error (${response.status}): ${parsedMessage}` };
+        if (response.status === 401) return { success: false, error: `Invalid Groq API Key: ${parsedMessage}` };
+        if (response.status === 429) return { success: false, error: `Groq Rate limit/Quota exceeded: ${parsedMessage}` };
+        return { success: false, error: `Groq Streaming API Error (${response.status}): ${parsedMessage}` };
       }
 
       const reader = response.body?.getReader();
       if (!reader) {
-        return { success: false, error: 'Gemini response body reader unavailable.' };
+        return { success: false, error: 'Groq response body reader unavailable.' };
       }
 
       const decoder = new TextDecoder('utf-8');
@@ -236,15 +241,16 @@ export class GeminiProvider implements AIProvider {
           const trimmed = line.trim();
           if (trimmed.startsWith('data: ')) {
             const dataStr = trimmed.slice(6);
+            if (dataStr === '[DONE]') continue;
             try {
               const json = JSON.parse(dataStr);
-              const textDelta = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              if (textDelta) {
-                fullContent += textDelta;
-                onChunk(textDelta);
+              const delta = json?.choices?.[0]?.delta?.content || '';
+              if (delta) {
+                fullContent += delta;
+                onChunk(delta);
               }
             } catch {
-              // Ignore non-json chunk lines
+              // Ignore non-json stream lines
             }
           }
         }
@@ -258,7 +264,7 @@ export class GeminiProvider implements AIProvider {
         success: true,
         data: {
           suggestedReply: suggestions[0]?.text || fullContent.trim(),
-          reasoning: `Streamed by Google Gemini (${model}).`,
+          reasoning: `Streamed by Groq ${model} model.`,
           tone: suggestions[0]?.tone || fallbackTone,
           providerId: this.id,
           suggestions,
@@ -269,7 +275,7 @@ export class GeminiProvider implements AIProvider {
       if (err instanceof Error && err.name === 'AbortError') {
         return { success: false, error: 'Request was cancelled by user.' };
       }
-      return { success: false, error: err instanceof Error ? err.message : 'Gemini stream error' };
+      return { success: false, error: err instanceof Error ? err.message : 'Groq stream error' };
     }
   }
 }

@@ -11,6 +11,7 @@
   "dependencies": {
     "@rapport/ai-core": "workspace:*",
     "@rapport/commitment-engine": "workspace:*",
+    "@rapport/memory": "workspace:*",
     "@rapport/overlay": "workspace:*",
     "@rapport/platform-whatsapp": "workspace:*",
     "@rapport/shared": "workspace:*",

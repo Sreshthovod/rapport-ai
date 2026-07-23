@@ -1,4 +1,5 @@
-import { DEFAULT_RAPPORT_SETTINGS, MemoryStatistics, RapportSettings } from '@rapport/shared';
+import { DEFAULT_RAPPORT_SETTINGS, MemoryStatistics, RapportSettings, withTimeout } from '@rapport/shared';
+import { BrowserStorageMemoryStore } from '@rapport/memory';
 import { ApiKeyManager } from '../providers/ApiKeyManager.js';
 import { ProviderManager } from '../providers/ProviderManager.js';
 
@@ -47,10 +48,13 @@ export class SettingsManager {
   public async loadSettings(): Promise<RapportSettings> {
     try {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        const result = await new Promise<Record<string, unknown>>((resolve) => {
-          chrome.storage.local.get(['rapport_user_settings'], (res: Record<string, unknown>) => resolve(res || {}));
-        });
-        if (result.rapport_user_settings) {
+        const storagePromise = typeof chrome.storage.local.get === 'function'
+          ? chrome.storage.local.get(['rapport_user_settings'])
+          : new Promise<Record<string, unknown>>((resolve) => {
+              chrome.storage.local.get(['rapport_user_settings'], (res: Record<string, unknown>) => resolve(res || {}));
+            });
+        const result = (await withTimeout(storagePromise, 3000, 'SettingsManager:loadSettings')) as Record<string, unknown>;
+        if (result && result.rapport_user_settings) {
           this.settings = {
             ...DEFAULT_RAPPORT_SETTINGS,
             ...(result.rapport_user_settings as Partial<RapportSettings>),
@@ -144,8 +148,10 @@ export class SettingsManager {
       }
     }
 
-    // Local-only mode enforcement — force offline provider
-    if (safe.localOnlyMode === true) {
+    // Local-only mode enforcement — force offline provider when localOnlyMode is true, but clear localOnlyMode when a cloud provider is explicitly selected
+    if (safe.activeProviderId && safe.activeProviderId !== 'fake-provider') {
+      safe.localOnlyMode = false;
+    } else if (safe.localOnlyMode === true) {
       safe.activeProviderId = 'fake-provider';
     }
 
@@ -227,12 +233,34 @@ export class SettingsManager {
   }
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Memory Statistics (delegated — placeholder for MemoryStore integration)
+  // Memory Statistics (Live query to BrowserStorageMemoryStore)
   // ────────────────────────────────────────────────────────────────────────────
 
+  public async getMemoryStatisticsAsync(): Promise<MemoryStatistics> {
+    try {
+      const store = BrowserStorageMemoryStore.getInstance();
+      const result = await store.find({ limit: 10000 });
+      const items = result.items;
+      const totalMemories = items.length;
+      const contacts = new Set(items.map((i) => i.contactId));
+      const jsonStr = JSON.stringify(items);
+      const storageSizeBytes = new Blob([jsonStr]).size;
+
+      return {
+        totalMemories,
+        totalContacts: contacts.size,
+        storageSizeBytes,
+      };
+    } catch {
+      return {
+        totalMemories: 0,
+        totalContacts: 0,
+        storageSizeBytes: 0,
+      };
+    }
+  }
+
   public getMemoryStatistics(): MemoryStatistics {
-    // In production this would query MemoryStore.getInstance()
-    // For now return a safe placeholder that the UI can display
     return {
       totalMemories: 0,
       totalContacts: 0,
@@ -283,8 +311,10 @@ export class SettingsManager {
     let selectedModel = this.settings.openaiModel;
     if (activeProvider === 'claude') selectedModel = this.settings.claudeModel;
     if (activeProvider === 'gemini') selectedModel = this.settings.geminiModel;
+    if (activeProvider === 'groq') selectedModel = this.settings.groqModel;
     if (activeProvider === 'fake-provider') selectedModel = 'fake-deterministic';
 
+    this.providerManager.setActiveProvider(activeProvider);
     this.providerManager.setConfig({
       activeProviderId: activeProvider,
       fallbackProviderId: this.settings.enableProviderFallback

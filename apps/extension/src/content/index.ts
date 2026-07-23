@@ -1,9 +1,12 @@
 import {
+  AIPipelineInspector,
   AIReplyResponsePayload,
   buildConversationContext,
+  ConversationContext,
   formatContextLog,
   RAPPORT_AI_GENERATE_REPLY,
 } from '@rapport/shared';
+import { ContextEngine, CopilotEngine } from '@rapport/ai-core';
 import { CommitmentTracker } from '@rapport/commitment-engine';
 import { OverlayManager } from '@rapport/overlay';
 import { WhatsAppAdapter } from '@rapport/platform-whatsapp';
@@ -57,6 +60,21 @@ function initRapportContentScript(): void {
         injectOrUpdateStatusBadge(domResult.connected === true);
       };
 
+      const evaluateCopilotTip = (chatId: string, context: ConversationContext) => {
+        try {
+          const structuredContext = ContextEngine.processContext(context);
+          const decision = CopilotEngine.getInstance().evaluateCopilot(structuredContext, chatId);
+          if (decision.shouldAssist && decision.primaryRecommendation) {
+            overlay.setCopilotTip(decision.primaryRecommendation.reason);
+          } else {
+            overlay.setCopilotTip(undefined);
+          }
+        } catch (err) {
+          console.warn('[Rapport:Copilot] Evaluation error:', err);
+          overlay.setCopilotTip(undefined);
+        }
+      };
+
       const evaluateCommitments = (chatId: string) => {
         const visibleMessages = adapter.getVisibleMessages(20);
         const { newlyDetected, newlyCompleted } = commitmentTracker.processOutgoingMessages(
@@ -88,6 +106,9 @@ function initRapportContentScript(): void {
 
       // Handle AI Button Click in Overlay
       overlay.onAIClick(() => {
+        const inspector = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+          ? AIPipelineInspector.getInstance()
+          : null;
         const chat = adapter.getCurrentChat();
         if (!chat) {
           overlay.showAIError('No active chat detected. Select a contact on WhatsApp Web first.');
@@ -106,26 +127,46 @@ function initRapportContentScript(): void {
         console.log('[Rapport:AI] Requesting AI reply recommendation...');
         overlay.showAILoading();
 
+        // 30-second resilient safety timeout — guarantees loading state ALWAYS terminates
+        let hasResponded = false;
+        const requestTimeoutId = setTimeout(() => {
+          if (!hasResponded) {
+            hasResponded = true;
+            console.error('[Rapport:AI:TIMEOUT] Suggestion request timed out after 30 seconds.');
+            inspector?.endStage('[8] Suggestion Rendering', { error: 'Request 30s timeout' }, true);
+            overlay.showAIError('Suggestion request timed out after 30 seconds. Please check your network connection or API key settings.');
+          }
+        }, 30000);
+
         chrome.runtime.sendMessage(
           {
             type: RAPPORT_AI_GENERATE_REPLY,
             context,
           },
           (response: AIReplyResponsePayload) => {
+            if (hasResponded) return;
+            hasResponded = true;
+            clearTimeout(requestTimeoutId);
+
+            inspector?.startStage('[8] Suggestion Rendering');
+
             if (chrome.runtime.lastError) {
               console.error('[Rapport:AI] Chrome runtime error:', chrome.runtime.lastError);
-              overlay.showAIError(
-                chrome.runtime.lastError.message || 'Background worker communication failed.'
-              );
+              const errMsg = chrome.runtime.lastError.message || 'Background worker communication failed.';
+              inspector?.endStage('[8] Suggestion Rendering', { error: errMsg }, true);
+              overlay.showAIError(errMsg);
               return;
             }
 
             if (response && response.success && response.data) {
               console.log('[Rapport:AI] Received response:', response.data);
+              inspector?.endStage('[8] Suggestion Rendering', { suggestions: response.data.suggestions?.length || 1 });
               overlay.showAIResponse(response.data);
             } else {
               console.error('[Rapport:AI] Response error:', response?.error);
-              overlay.showAIError(response?.error || 'Failed to generate AI response.');
+              const errMsg = response?.error || 'Failed to generate AI response.';
+              inspector?.endStage('[8] Suggestion Rendering', { error: errMsg }, true);
+              overlay.showAIError(errMsg);
             }
           }
         );
@@ -192,8 +233,10 @@ function initRapportContentScript(): void {
 
         if (chat) {
           evaluateCommitments(chat.id);
+          evaluateCopilotTip(chat.id, context);
         } else {
           overlay.setPendingCommitmentText(undefined);
+          overlay.setCopilotTip(undefined);
         }
       });
 
@@ -215,6 +258,7 @@ function initRapportContentScript(): void {
 
         if (chat) {
           evaluateCommitments(chat.id);
+          evaluateCopilotTip(chat.id, context);
         }
       });
 

@@ -10,7 +10,7 @@ Return your response ONLY as a valid JSON object matching this schema:
 {
   "suggestions": [
     {
-      "category": "Quick Reply" | "Natural Reply" | "Funny Reply" | "Professional Reply" | "Flirty Reply" | "Short Reply" | "Detailed Reply" | "Follow-up Question" | "Conversation Starter" | "Conversation Saver" | "Empathetic Reply",
+      "category": "Natural Reply" | "Warm Reply" | "Creative Reply" | "Quick Reply" | "Professional Reply" | "Empathetic Reply",
       "text": "The exact suggested message text",
       "tone": "Tone name",
       "style": "Style description",
@@ -19,8 +19,14 @@ Return your response ONLY as a valid JSON object matching this schema:
     }
   ]
 }
-Generate between 3 and 5 distinct options across different categories.
-Do not wrap in markdown backticks. Return raw JSON.
+
+REQUIREMENTS:
+1. Generate EXACTLY 3 distinct reply options matching the language of the conversation:
+   - Option 1 (Safe/Natural): A smooth, standard, contextually accurate response.
+   - Option 2 (Warm/Engaging): An empathetic, friendly, and warm response that encourages thread continuation.
+   - Option 3 (Creative/Witty): A clever, playful, or distinctively engaging response.
+2. Directly address specific details, questions, or topics from recent messages. Avoid generic fluff.
+3. Do not wrap in markdown backticks. Return raw JSON.
 `.trim();
   }
 

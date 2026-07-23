@@ -1,4 +1,4 @@
-export type LLMProviderId = 'openai' | 'claude' | 'gemini' | 'fake-provider';
+export type LLMProviderId = 'openai' | 'claude' | 'gemini' | 'groq' | 'fake-provider';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -36,6 +36,7 @@ export interface RapportSettings {
   openaiModel: string;
   claudeModel: string;
   geminiModel: string;
+  groqModel: string;
   temperature: number;
   maxTokens: number;
   defaultTone: string;
@@ -98,6 +99,7 @@ export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
   openaiModel: 'gpt-4o-mini',
   claudeModel: 'claude-3-5-haiku-20241022',
   geminiModel: 'gemini-2.5-flash',
+  groqModel: 'llama-3.3-70b-versatile',
   temperature: 0.7,
   maxTokens: 500,
   defaultTone: 'Friendly',

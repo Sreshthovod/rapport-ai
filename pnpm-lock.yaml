@@ -69,6 +69,9 @@ importers:
       '@rapport/commitment-engine':
         specifier: workspace:*
         version: link:../../packages/commitment-engine
+      '@rapport/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@rapport/overlay':
         specifier: workspace:*
         version: link:../../packages/overlay
@@ -148,6 +151,9 @@ importers:
       '@rapport/ai-core':
         specifier: workspace:*
         version: link:../ai-core
+      '@rapport/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@rapport/shared':
         specifier: workspace:*
         version: link:../shared

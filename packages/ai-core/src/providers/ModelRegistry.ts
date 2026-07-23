@@ -1,7 +1,7 @@
 export interface ModelSpec {
   id: string;
   name: string;
-  providerId: 'openai' | 'claude' | 'gemini' | 'fake-provider';
+  providerId: 'openai' | 'claude' | 'gemini' | 'groq' | 'fake-provider';
   maxContextTokens: number;
   description: string;
   isDefault?: boolean;
@@ -94,6 +94,37 @@ export class ModelRegistry {
       providerId: 'gemini',
       maxContextTokens: 1000000,
       description: 'Proven fast flash model for daily WhatsApp messaging.',
+    });
+
+    // Groq Models
+    this.register({
+      id: 'llama-3.3-70b-versatile',
+      name: 'LLaMA 3.3 70B Versatile',
+      providerId: 'groq',
+      maxContextTokens: 32768,
+      description: 'Groq flagship model. Best for fast reasoning and instant reply options.',
+      isDefault: true,
+    });
+    this.register({
+      id: 'llama-3.1-8b-instant',
+      name: 'LLaMA 3.1 8B Instant',
+      providerId: 'groq',
+      maxContextTokens: 8192,
+      description: 'Ultra low-latency LLaMA model for speed-critical tasks.',
+    });
+    this.register({
+      id: 'mixtral-8x7b-32768',
+      name: 'Mixtral 8x7B Instruct',
+      providerId: 'groq',
+      maxContextTokens: 32768,
+      description: 'High-quality mixture of experts model for long contexts.',
+    });
+    this.register({
+      id: 'gemma2-9b-it',
+      name: 'Gemma 2 9B IT',
+      providerId: 'groq',
+      maxContextTokens: 8192,
+      description: 'Google Gemma instruction tuned model optimized for conversational logic.',
     });
 
     // Fake Provider Model

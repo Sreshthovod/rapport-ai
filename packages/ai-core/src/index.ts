@@ -8,6 +8,7 @@ export { FakeProvider } from './providers/FakeProvider.js';
 export { OpenAIProvider } from './providers/OpenAIProvider.js';
 export { ClaudeProvider } from './providers/ClaudeProvider.js';
 export { GeminiProvider } from './providers/GeminiProvider.js';
+export { GroqProvider } from './providers/GroqProvider.js';
 export { ProviderRegistry } from './providers/ProviderRegistry.js';
 export { ProviderManager } from './providers/ProviderManager.js';
 export { ApiKeyManager } from './providers/ApiKeyManager.js';
