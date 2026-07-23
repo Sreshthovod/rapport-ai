@@ -99,7 +99,7 @@ export const DEFAULT_RAPPORT_SETTINGS: RapportSettings = {
   fallbackProviderId: 'fake-provider',
   openaiModel: 'gpt-4o-mini',
   claudeModel: 'claude-3-5-haiku-20241022',
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel: 'gemini-3.5-flash',
   groqModel: 'llama-3.3-70b-versatile',
   temperature: 0.7,
   maxTokens: 500,

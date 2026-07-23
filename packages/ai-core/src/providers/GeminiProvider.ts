@@ -19,8 +19,8 @@ export class GeminiProvider implements AIProvider {
     supportsCustomSystemPrompts: true,
     maxContextTokens: 1000000,
     supportedModels: [
-      'gemini-2.5-pro',
-      'gemini-2.5-flash',
+      'gemini-3.5-pro',
+      'gemini-3.5-flash',
       'gemini-1.5-pro',
       'gemini-1.5-flash',
     ],
@@ -59,7 +59,7 @@ export class GeminiProvider implements AIProvider {
     }
 
     const compiledPrompt = request.compiledPrompt;
-    const model = (request.options?.model as string) || 'gemini-2.5-flash';
+    const model = (request.options?.model as string) || 'gemini-3.5-flash';
     const temperature = (request.options?.temperature as number) ?? 0.7;
     const maxTokens = (request.options?.maxTokens as number) ?? 600;
 
@@ -192,7 +192,7 @@ export class GeminiProvider implements AIProvider {
     }
 
     const compiledPrompt = request.compiledPrompt;
-    const model = (request.options?.model as string) || 'gemini-2.5-flash';
+    const model = (request.options?.model as string) || 'gemini-3.5-flash';
     const temperature = (request.options?.temperature as number) ?? 0.7;
     const maxTokens = (request.options?.maxTokens as number) ?? 600;
 

@@ -74,15 +74,15 @@ export class ModelRegistry {
 
     // Google Gemini Models
     this.register({
-      id: 'gemini-2.5-pro',
-      name: 'Gemini 2.5 Pro',
+      id: 'gemini-3.5-pro',
+      name: 'Gemini 3.5 Pro',
       providerId: 'gemini',
       maxContextTokens: 1000000,
       description: 'Multimodal 1M context window model for deep relationship context.',
     });
     this.register({
-      id: 'gemini-2.5-flash',
-      name: 'Gemini 2.5 Flash',
+      id: 'gemini-3.5-flash',
+      name: 'Gemini 3.5 Flash',
       providerId: 'gemini',
       maxContextTokens: 1000000,
       description: 'Sub-second latency model for real-time typing assistance.',
