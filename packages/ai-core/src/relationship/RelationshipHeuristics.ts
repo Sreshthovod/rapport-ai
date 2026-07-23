@@ -103,6 +103,9 @@ export class RelationshipHeuristics {
       preferredTone,
       confidence: 0.9,
       interactionScore,
+      emojiUsage: profile?.emojiUsage || 'none',
+      conversationDepth: profile?.conversationDepth || 40,
+      messagesPerDay: profile?.messagesPerDay || 0,
     };
   }
 }

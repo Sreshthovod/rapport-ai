@@ -149,6 +149,11 @@ export class PromptComposer {
       const suggestedStrategy = intel?.suggestedStrategy || 'Continue topic';
       const styleMetrics = intel?.styleMetrics;
 
+      const relEmoji = context.relationship?.emojiUsage || 'none';
+      const relDepth = context.relationship?.conversationDepth || 40;
+      const relFreq = context.relationship?.messagesPerDay || 0;
+      const relLang = context.relationship?.preferredLanguage || 'English';
+
       const systemPrompt = [
         `You are Rapport AI (version ${PromptComposer.CURRENT_VERSION}), a world-class conversation copilot.`,
         `GOAL: ${goal}`,
@@ -167,10 +172,14 @@ export class PromptComposer {
         ``,
         learnedStyleSection,
         ``,
-        `=== RELATIONSHIP CONTEXT ===`,
+        `=== RELATIONSHIP & CONTACT INTELLIGENCE ===`,
         `CONTACT NAME: ${contactName}`,
         `INFERRED RELATIONSHIP: ${String(inferredRelationship).toUpperCase()}`,
         `PREFERRED TONE: ${preferredTone}`,
+        `PREFERRED LANGUAGE: ${relLang}`,
+        `COMMUNICATION FREQUENCY: ${relFreq > 0 ? `${relFreq} messages/day` : 'Moderate'}`,
+        `EMOJI USAGE: ${relEmoji}`,
+        `CONVERSATION DEPTH SCORE: ${relDepth}/100`,
         styleSection,
         engagementSection,
         commonTopicsSection,

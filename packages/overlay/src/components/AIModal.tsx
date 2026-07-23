@@ -64,6 +64,7 @@ export const AIModal: React.FC<AIModalProps> = ({
   const [showSettings, setShowSettings] = useState<boolean>(Boolean(initialShowSettings));
   const [showDevPanel, setShowDevPanel] = useState<boolean>(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
+  const [intelCollapsed, setIntelCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialShowSettings !== undefined) {
@@ -430,6 +431,85 @@ export const AIModal: React.FC<AIModalProps> = ({
             {!loading && !error && (!data || suggestions.length === 0) && (
               <div style={{ padding: '24px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>
                 No active chat selected. Open a thread in WhatsApp Web to generate contextual suggestions.
+              </div>
+            )}
+
+            {/* Contact Intelligence Card */}
+            {!loading && !error && data && contextSignals.relationshipType && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                transition: 'all 0.2s ease',
+              }}>
+                <div
+                  onClick={() => setIntelCollapsed(!intelCollapsed)}
+                  style={{
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    userSelect: 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--rapport-accent, #00a884)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span>👤</span> Contact Intelligence: {contextSignals.relationshipType}
+                  </div>
+                  <span style={{ fontSize: '10px', color: '#9ca3af', transform: intelCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', display: 'inline-block', transition: 'transform 0.15s ease' }}>▼</span>
+                </div>
+
+                {!intelCollapsed && (
+                  <div style={{
+                    padding: '10px 12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                    fontSize: '11.5px',
+                    lineHeight: 1.4,
+                    color: '#e5e7eb',
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      <div>
+                        <span style={{ color: '#9ca3af' }}>Depth: </span>
+                        <strong>{contextSignals.conversationDepth >= 70 ? 'Deep' : contextSignals.conversationDepth >= 40 ? 'Medium' : 'Casual'}</strong> ({contextSignals.conversationDepth}/100)
+                      </div>
+                      <div>
+                        <span style={{ color: '#9ca3af' }}>Lang: </span>
+                        <strong>{contextSignals.preferredLanguage || 'English'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#9ca3af' }}>Frequency: </span>
+                        <strong>{contextSignals.messagesPerDay > 20 ? '⚡ High' : contextSignals.messagesPerDay > 5 ? 'Moderate' : 'Low'}</strong> ({contextSignals.messagesPerDay || 0} msgs/day)
+                      </div>
+                      <div>
+                        <span style={{ color: '#9ca3af' }}>Emojis: </span>
+                        <strong>{contextSignals.emojiUsage === 'frequent' ? 'Frequent' : contextSignals.emojiUsage === 'rare' ? 'Rare' : 'None'}</strong>
+                      </div>
+                    </div>
+
+                    {contextSignals.commonTopics && contextSignals.commonTopics.length > 0 && (
+                      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '6px', marginTop: '2px' }}>
+                        <div style={{ color: '#9ca3af', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>Topics Discussed</div>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {contextSignals.commonTopics.map((topic: string, i: number) => (
+                            <span key={i} style={{
+                              fontSize: '10px',
+                              background: 'rgba(255,255,255,0.06)',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              borderRadius: '4px',
+                              padding: '1px 5px',
+                              color: '#9ca3af',
+                            }}>{topic}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

@@ -18,6 +18,10 @@ export interface RelationshipProfile {
   recurringPhrases: string[];
   preferredLanguage: string;
   interactionScore: number;
+  // Contact Intelligence fields
+  emojiUsage?: 'frequent' | 'rare' | 'none';
+  conversationDepth?: number; // 0-100
+  messagesPerDay?: number;
 }
 
 export interface RelationshipContext {
@@ -28,4 +32,9 @@ export interface RelationshipContext {
   preferredTone: string;
   confidence: number;
   interactionScore: number;
+  // Contact Intelligence fields
+  emojiUsage?: 'frequent' | 'rare' | 'none';
+  conversationDepth?: number; // 0-100
+  messagesPerDay?: number;
+  preferredLanguage?: string;
 }

@@ -113,6 +113,27 @@ export class AIService {
           break;
         }
 
+        // Enrich metadata with full contextSignals (including Contact Intelligence)
+        result.data.metadata = {
+          ...result.data.metadata,
+          contextSignals: {
+            primaryIntent: structuredContext.intelligence?.latestIntent || 'Information',
+            stage: (structuredContext.stage as string) || 'Unknown',
+            relationshipType: structuredContext.relationship?.relationshipType || 'unknown',
+            preferredTone: structuredContext.relationship?.preferredTone || 'Casual',
+            engagementLevel: structuredContext.relationship?.engagementLevel || 'medium',
+            pendingQuestions: structuredContext.pendingQuestions?.length || 0,
+            unconfirmedPlans: structuredContext.intelligence?.pendingItems?.unconfirmedPlans?.length || 0,
+            extractedFacts: structuredContext.extractedFacts?.length || 0,
+            // Contact Intelligence fields
+            emojiUsage: structuredContext.relationship?.emojiUsage || 'none',
+            conversationDepth: structuredContext.relationship?.conversationDepth || 40,
+            messagesPerDay: structuredContext.relationship?.messagesPerDay || 0,
+            preferredLanguage: structuredContext.relationship?.preferredLanguage || 'English',
+            commonTopics: structuredContext.relationship?.commonTopics || [],
+          }
+        };
+
         // Parse suggestions
         const rawSuggestions: AISuggestion[] = result.data.suggestions || (result.data.suggestedReply ? [{
           id: `sug_${Date.now()}_0`,
