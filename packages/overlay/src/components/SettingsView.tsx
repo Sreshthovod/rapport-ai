@@ -471,8 +471,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   };
 
   // Layout sizing config based on display modes
-  const containerMaxWidth = mode === 'popup' ? '440px' : '720px';
-  const containerMaxHeight = mode === 'popup' ? '560px' : '650px';
+  const [size, setSize] = useState({
+    width: mode === 'popup' ? 440 : 720,
+    height: mode === 'popup' ? 560 : 650
+  });
+  const isResizingRef = useRef(false);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startWidth = size.width;
+    const startHeight = size.height;
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      setSize({
+        width: Math.max(380, Math.min(1200, startWidth + deltaX)),
+        height: Math.max(450, Math.min(1000, startHeight + deltaY))
+      });
+    };
+
+    const handleMouseUp = () => {
+      isResizingRef.current = false;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [size]);
+
   const sidebarWidth = mode === 'popup' ? '140px' : '180px';
 
   return (
@@ -480,9 +512,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: '100%',
-        maxWidth: containerMaxWidth,
-        maxHeight: containerMaxHeight,
+        width: `${size.width}px`,
+        height: `${size.height}px`,
+        maxWidth: '100vw',
+        maxHeight: '100vh',
         background: C.bg,
         color: C.textPrimary,
         borderRadius: C.radiusLg,
@@ -2092,6 +2125,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
           onCancel={() => setConfirmDialog(null)}
         />
       )}
+
+      {/* ── Resize Handle ─────────────────────────────────────────────────── */}
+      <div
+        onMouseDown={handleResizeMouseDown}
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          width: '16px',
+          height: '16px',
+          cursor: 'se-resize',
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'flex-end',
+          padding: '3px',
+          zIndex: 10000,
+        }}
+      >
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 8 8"
+          style={{
+            fill: 'var(--rapport-text-tertiary)',
+            opacity: 0.6,
+            pointerEvents: 'none',
+          }}
+        >
+          <path d="M6 0 L8 0 L8 8 L0 8 L0 6 L4 6 L4 2 L6 2 Z" fill="var(--rapport-text-tertiary)" opacity="0.3" />
+          <path d="M7 3 L8 3 L8 8 L3 8 L3 7 L5 7 L5 5 L7 5 Z" fill="var(--rapport-text-tertiary)" opacity="0.6" />
+        </svg>
+      </div>
     </div>
   );
 };
