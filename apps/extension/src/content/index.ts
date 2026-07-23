@@ -1,9 +1,12 @@
 import {
+  AIPipelineInspector,
   AIReplyResponsePayload,
   buildConversationContext,
+  ConversationContext,
   formatContextLog,
   RAPPORT_AI_GENERATE_REPLY,
 } from '@rapport/shared';
+import { ContextEngine, CopilotEngine } from '@rapport/ai-core';
 import { CommitmentTracker } from '@rapport/commitment-engine';
 import { OverlayManager } from '@rapport/overlay';
 import { WhatsAppAdapter } from '@rapport/platform-whatsapp';
@@ -13,12 +16,12 @@ console.log('[Rapport] Content Script Loaded');
 function initRapportContentScript(): void {
   const hostname = window.location.hostname;
 
-  if (hostname.includes('web.whatsapp.com')) {
-    console.log('[Rapport] WhatsApp Detected');
-  } else if (!hostname.includes('app.slack.com')) {
-    console.warn(`[Rapport] Unhandled target hostname: ${hostname}`);
+  if (!hostname.includes('web.whatsapp.com')) {
+    console.warn(`[Rapport] Unsupported hostname: ${hostname}. Rapport AI only runs on web.whatsapp.com.`);
     return;
   }
+
+  console.log('[Rapport] WhatsApp Detected');
 
   const onDomReady = (callback: () => void) => {
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -39,9 +42,37 @@ function initRapportContentScript(): void {
       overlay.mount(document.body);
       console.log('[Rapport] Overlay Mounted');
 
+      // ----------------------------------------------------------------
+      // Dispose everything cleanly when page is unloaded
+      // ----------------------------------------------------------------
+      const handleUnload = () => {
+        stopChatObserver();
+        stopMessageObserver();
+        stopDraftObserver();
+        stopDOMObserver();
+        adapter.dispose();
+        overlay.dispose();
+      };
+      window.addEventListener('beforeunload', handleUnload, { once: true });
+
       const updateStatusBadge = () => {
         const domResult = adapter.validateWhatsAppDOM();
         injectOrUpdateStatusBadge(domResult.connected === true);
+      };
+
+      const evaluateCopilotTip = (chatId: string, context: ConversationContext) => {
+        try {
+          const structuredContext = ContextEngine.processContext(context);
+          const decision = CopilotEngine.getInstance().evaluateCopilot(structuredContext, chatId);
+          if (decision.shouldAssist && decision.primaryRecommendation) {
+            overlay.setCopilotTip(decision.primaryRecommendation.reason);
+          } else {
+            overlay.setCopilotTip(undefined);
+          }
+        } catch (err) {
+          console.warn('[Rapport:Copilot] Evaluation error:', err);
+          overlay.setCopilotTip(undefined);
+        }
       };
 
       const evaluateCommitments = (chatId: string) => {
@@ -75,6 +106,9 @@ function initRapportContentScript(): void {
 
       // Handle AI Button Click in Overlay
       overlay.onAIClick(() => {
+        const inspector = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
+          ? AIPipelineInspector.getInstance()
+          : null;
         const chat = adapter.getCurrentChat();
         if (!chat) {
           overlay.showAIError('No active chat detected. Select a contact on WhatsApp Web first.');
@@ -93,26 +127,46 @@ function initRapportContentScript(): void {
         console.log('[Rapport:AI] Requesting AI reply recommendation...');
         overlay.showAILoading();
 
+        // 30-second resilient safety timeout — guarantees loading state ALWAYS terminates
+        let hasResponded = false;
+        const requestTimeoutId = setTimeout(() => {
+          if (!hasResponded) {
+            hasResponded = true;
+            console.error('[Rapport:AI:TIMEOUT] Suggestion request timed out after 30 seconds.');
+            inspector?.endStage('[8] Suggestion Rendering', { error: 'Request 30s timeout' }, true);
+            overlay.showAIError('Suggestion request timed out after 30 seconds. Please check your network connection or API key settings.');
+          }
+        }, 30000);
+
         chrome.runtime.sendMessage(
           {
             type: RAPPORT_AI_GENERATE_REPLY,
             context,
           },
           (response: AIReplyResponsePayload) => {
+            if (hasResponded) return;
+            hasResponded = true;
+            clearTimeout(requestTimeoutId);
+
+            inspector?.startStage('[8] Suggestion Rendering');
+
             if (chrome.runtime.lastError) {
               console.error('[Rapport:AI] Chrome runtime error:', chrome.runtime.lastError);
-              overlay.showAIError(
-                chrome.runtime.lastError.message || 'Background worker communication failed.'
-              );
+              const errMsg = chrome.runtime.lastError.message || 'Background worker communication failed.';
+              inspector?.endStage('[8] Suggestion Rendering', { error: errMsg }, true);
+              overlay.showAIError(errMsg);
               return;
             }
 
             if (response && response.success && response.data) {
               console.log('[Rapport:AI] Received response:', response.data);
+              inspector?.endStage('[8] Suggestion Rendering', { suggestions: response.data.suggestions?.length || 1 });
               overlay.showAIResponse(response.data);
             } else {
               console.error('[Rapport:AI] Response error:', response?.error);
-              overlay.showAIError(response?.error || 'Failed to generate AI response.');
+              const errMsg = response?.error || 'Failed to generate AI response.';
+              inspector?.endStage('[8] Suggestion Rendering', { error: errMsg }, true);
+              overlay.showAIError(errMsg);
             }
           }
         );
@@ -127,16 +181,37 @@ function initRapportContentScript(): void {
         }
 
         inputEl.focus();
-        const success = document.execCommand('insertText', false, textToInsert);
-        if (!success) {
+
+        // Try modern InputEvent first (replaces deprecated execCommand)
+        try {
+          const inputEvent = new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            data: textToInsert,
+            inputType: 'insertText',
+          });
+          inputEl.dispatchEvent(inputEvent);
+
+          // If the element supports execCommand (contenteditable), use it as a fallback
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          if (!document.execCommand('insertText', false, textToInsert)) {
+            inputEl.textContent = textToInsert;
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        } catch {
           inputEl.textContent = textToInsert;
           inputEl.dispatchEvent(new Event('input', { bubbles: true }));
         }
+
         console.log('[Rapport:AI] Inserted AI reply into WhatsApp draft textbox.');
       });
 
-      // 1. Independent Chat Switch Observer
-      adapter.observeChat((chat) => {
+      // ----------------------------------------------------------------
+      // Observers — capture cleanup functions to prevent listener leaks
+      // ----------------------------------------------------------------
+
+      // 1. Chat Switch Observer
+      const stopChatObserver = adapter.observeChat((chat) => {
         updateStatusBadge();
 
         const inputElement = adapter.getInputElement();
@@ -158,13 +233,15 @@ function initRapportContentScript(): void {
 
         if (chat) {
           evaluateCommitments(chat.id);
+          evaluateCopilotTip(chat.id, context);
         } else {
           overlay.setPendingCommitmentText(undefined);
+          overlay.setCopilotTip(undefined);
         }
       });
 
-      // 2. Independent Message List Mutation Observer
-      adapter.observeMessages((messages) => {
+      // 2. Message List Mutation Observer
+      const stopMessageObserver = adapter.observeMessages((messages) => {
         updateStatusBadge();
 
         const chat = adapter.getCurrentChat();
@@ -181,16 +258,17 @@ function initRapportContentScript(): void {
 
         if (chat) {
           evaluateCommitments(chat.id);
+          evaluateCopilotTip(chat.id, context);
         }
       });
 
-      // 3. Independent Draft Typing Observer
-      adapter.observeDraft((draftText) => {
+      // 3. Draft Typing Observer
+      const stopDraftObserver = adapter.observeDraft((draftText) => {
         console.log(`[DraftObserver] Draft: "${draftText}"`);
       });
 
-      // 4. Observer for DOM Connection Status
-      adapter.observeDOMStatus((result) => {
+      // 4. DOM Connection Status Observer
+      const stopDOMObserver = adapter.observeDOMStatus((result) => {
         injectOrUpdateStatusBadge(result.connected === true);
       });
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { FakeAIResponse } from '@rapport/shared';
+import { CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
 import { AIModal } from './components/AIModal.js';
 import { FloatingToolbar } from './FloatingToolbar.js';
 import { createPositioningEngine, PositioningEngine } from './Positioning.js';
@@ -28,8 +28,12 @@ export class OverlayManager {
   // AI Modal States
   private aiModalVisible: boolean = false;
   private aiModalLoading: boolean = false;
+  private aiModalShowSettings: boolean = false;
+  private streamingText: string = '';
   private aiModalData: FakeAIResponse | null = null;
   private aiModalError: string | null = null;
+  private aiModalCopilotTip: string | undefined = undefined;
+  private compiledPrompt: CompiledPromptSpec | null = null;
 
   private onAIClickCallback?: () => void;
   private onInsertDraftCallback?: (text: string) => void;
@@ -71,17 +75,59 @@ export class OverlayManager {
     this.onInsertDraftCallback = callback;
   }
 
+  public setCompiledPrompt(spec: CompiledPromptSpec | null): void {
+    this.compiledPrompt = spec;
+    if (this.aiModalVisible) this.render();
+  }
+
+  /** Set a live copilot tip to display inside the AI modal. Pass undefined to hide the chip. */
+  public setCopilotTip(tip: string | undefined): void {
+    this.aiModalCopilotTip = tip;
+    if (this.aiModalVisible) {
+      this.render();
+    }
+  }
+
+  public openAIModal(): void {
+    this.aiModalVisible = true;
+    this.aiModalShowSettings = false;
+    if (this.onAIClickCallback) {
+      this.onAIClickCallback();
+    } else {
+      this.showAILoading();
+    }
+  }
+
+  public showAISettings(): void {
+    this.aiModalVisible = true;
+    this.aiModalShowSettings = true;
+    this.aiModalLoading = false;
+    this.render();
+  }
+
   public showAILoading(): void {
     this.aiModalVisible = true;
     this.aiModalLoading = true;
+    this.aiModalShowSettings = false;
+    this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = null;
+    this.render();
+  }
+
+  public updateStreamingText(chunk: string): void {
+    this.streamingText += chunk;
+    this.aiModalVisible = true;
+    this.aiModalLoading = true;
+    this.aiModalShowSettings = false;
     this.render();
   }
 
   public showAIResponse(data: FakeAIResponse): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
+    this.streamingText = '';
     this.aiModalData = data;
     this.aiModalError = null;
     this.render();
@@ -90,6 +136,8 @@ export class OverlayManager {
   public showAIError(error: string): void {
     this.aiModalVisible = true;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
+    this.streamingText = '';
     this.aiModalData = null;
     this.aiModalError = error;
     this.render();
@@ -98,6 +146,8 @@ export class OverlayManager {
   public closeAIModal(): void {
     this.aiModalVisible = false;
     this.aiModalLoading = false;
+    this.aiModalShowSettings = false;
+    this.streamingText = '';
     this.render();
   }
 
@@ -121,7 +171,6 @@ export class OverlayManager {
 
   private handleDragStart = (e: React.PointerEvent): void => {
     if (!this.shadowHost) return;
-    const container = this.shadowHost.containerElement;
 
     this.isDragging = true;
     const currentTop = this.customPosition ? this.customPosition.top : this.anchoredPosition.top;
@@ -152,20 +201,23 @@ export class OverlayManager {
     const maxLeft = Math.max(10, window.innerWidth - 100);
     const maxTop = Math.max(10, window.innerHeight - 50);
 
-    const clampedLeft = Math.max(10, Math.min(newLeft, maxLeft));
-    const clampedTop = Math.max(10, Math.min(newTop, maxTop));
-
-    this.customPosition = { top: clampedTop, left: clampedLeft };
+    this.customPosition = {
+      top: Math.min(Math.max(10, newTop), maxTop),
+      left: Math.min(Math.max(10, newLeft), maxLeft),
+    };
 
     const container = this.shadowHost.containerElement;
-    container.style.top = `${clampedTop}px`;
-    container.style.left = `${clampedLeft}px`;
+    container.style.top = `${this.customPosition.top}px`;
+    container.style.left = `${this.customPosition.left}px`;
   };
 
-  private handlePointerUp = (): void => {
-    if (!this.isDragging) return;
+  private handlePointerUp = (e: PointerEvent): void => {
     this.isDragging = false;
-
+    try {
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore
+    }
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
@@ -228,22 +280,21 @@ export class OverlayManager {
           visible: this.isVisible,
           pendingCommitmentText: this.pendingCommitmentText,
           onDragStart: this.handleDragStart,
-          onAIClick: () => {
-            if (this.onAIClickCallback) {
-              this.onAIClickCallback();
-            }
-          },
-          onSettingsClick: () => {
-            console.log('[RapportOverlay] Settings clicked');
-          },
+          onAIClick: () => this.openAIModal(),
+          onSettingsClick: () => this.showAISettings(),
         }),
         React.createElement(AIModal, {
           visible: this.aiModalVisible,
           loading: this.aiModalLoading,
+          initialShowSettings: this.aiModalShowSettings,
+          streamingText: this.streamingText,
           data: this.aiModalData,
           error: this.aiModalError,
+          compiledPrompt: this.compiledPrompt,
+          copilotTip: this.aiModalCopilotTip,
           onClose: () => this.closeAIModal(),
           onRegenerate: () => {
+            this.showAILoading();
             if (this.onAIClickCallback) {
               this.onAIClickCallback();
             }

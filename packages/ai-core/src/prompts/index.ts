@@ -15,3 +15,9 @@ RULES:
 2. Preserve all core factual details (dates, numbers, names).
 3. Match recipient brevity preference. Never sound synthetic or overly corporate.
 `.trim();
+
+export { TemplateRegistry } from './TemplateRegistry.js';
+export { PromptComposer, DEBUG_AI_PIPELINE } from './PromptComposer.js';
+export { ResponseEvaluator } from './ResponseEvaluator.js';
+export { MemoryPromptBudget } from './MemoryPromptBudget.js';
+export * from './fixtures.js';

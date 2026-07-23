@@ -10,9 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rapport/memory": "workspace:*",
     "@rapport/shared": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "typescript": "^5.5.0"
   }
 }

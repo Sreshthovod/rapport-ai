@@ -1,3 +1,7 @@
+import { ConversationIntelligence } from './intelligence.js';
+import { RelationshipContext } from './relationship.js';
+import { WritingStyleProfile } from './writing-style.js';
+
 export type ToneType =
   | 'Friendly'
   | 'Professional'
@@ -76,12 +80,26 @@ export interface ContextSummary {
   suggestedGoal: string;
 }
 
+export interface ReplyTargetInfo {
+  hasTargetMessages: boolean;
+  lastOutgoingMessage: CanonicalMessage | null;
+  targetIncomingMessages: CanonicalMessage[];
+  targetTextSummary: string;
+  isAwaitingContactReply: boolean;
+}
+
 export interface StructuredAIContext {
   conversation: ConversationModel;
   summary: ContextSummary;
   tone: ToneType;
   stage: StageType;
+  language?: string;
+  replyTarget?: ReplyTargetInfo;
   recentMessages: CanonicalMessage[];
   extractedFacts: ExtractedFact[];
   pendingQuestions: string[];
+  intelligence?: ConversationIntelligence;
+  relationship?: RelationshipContext;
+  memoryContext?: unknown;
+  writingStyleProfile?: WritingStyleProfile;
 }

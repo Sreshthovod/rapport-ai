@@ -1,7 +1,26 @@
 export * from './prompts/index.js';
 export * from './context/index.js';
+export * from './intelligence/index.js';
+export * from './relationship/index.js';
+export * from './copilot/index.js';
 export type { AIProvider } from './providers/AIProvider.js';
 export { FakeProvider } from './providers/FakeProvider.js';
+export { OpenAIProvider } from './providers/OpenAIProvider.js';
+export { ClaudeProvider } from './providers/ClaudeProvider.js';
+export { GeminiProvider } from './providers/GeminiProvider.js';
+export { GroqProvider } from './providers/GroqProvider.js';
 export { ProviderRegistry } from './providers/ProviderRegistry.js';
+export { ProviderManager } from './providers/ProviderManager.js';
+export { ApiKeyManager } from './providers/ApiKeyManager.js';
+export { ModelRegistry } from './providers/ModelRegistry.js';
+export { MetricsTracker } from './providers/MetricsTracker.js';
 export { AIService } from './services/AIService.js';
 export { FakeAIService } from './services/FakeAIService.js';
+export { SettingsManager } from './services/SettingsManager.js';
+export { WritingStyleEngine } from './style/WritingStyleEngine.js';
+export { WritingStyleAnalyzer } from './style/WritingStyleAnalyzer.js';
+export { WritingStyleStore } from './style/WritingStyleStore.js';
+export { WritingStyleTest } from './style/WritingStyle.test.js';
+export { ReplyQualityEvaluator } from './intelligence/ReplyQualityEvaluator.js';
+export { ReplyQualityTest } from './intelligence/ReplyQualityEvaluator.test.js';
+

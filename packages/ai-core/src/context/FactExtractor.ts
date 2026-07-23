@@ -11,7 +11,12 @@ export class ImportantFactExtractor {
 
       // Location detection heuristic
       const locationMatch = text.match(/(?:at|in|near|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
-      if (locationMatch && !/^(Today|Tomorrow|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(locationMatch[1])) {
+      if (
+        locationMatch &&
+        !/^(Today|Tomorrow|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/i.test(
+          locationMatch[1]
+        )
+      ) {
         facts.push({
           category: 'location',
           fact: `Location mentioned: ${locationMatch[1]}`,
@@ -21,7 +26,9 @@ export class ImportantFactExtractor {
       }
 
       // Date / Time detection heuristic
-      const dateMatch = text.match(/(?:tomorrow|today|tonight|next week|at \d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b\d{1,2}\/\d{1,2}\b)/i);
+      const dateMatch = text.match(
+        /(?:tomorrow|today|tonight|next week|at \d{1,2}(?::\d{2})?\s*(?:am|pm)?|\b\d{1,2}\/\d{1,2}\b)/i
+      );
       if (dateMatch) {
         facts.push({
           category: 'date',
@@ -31,8 +38,36 @@ export class ImportantFactExtractor {
         });
       }
 
+      // Plan detection heuristic — populates the 'plan' category used by SummaryGenerator topic inference
+      const planMatch = text.match(
+        /(?:let(?:'s| us)|should we|want to|how about|are you free|we could|plan(?:ning)?|meet(?:ing)?|catch up|hang out|get together)/i
+      );
+      if (planMatch) {
+        facts.push({
+          category: 'plan',
+          fact: `Plan discussed: "${text.slice(0, 60)}"`,
+          sourceMessageId: msg.id,
+          confidence: 0.82,
+        });
+      }
+
+      // Event detection heuristic
+      const eventMatch = text.match(
+        /(?:birthday|anniversary|wedding|party|event|concert|game|trip|vacation|holiday)/i
+      );
+      if (eventMatch) {
+        facts.push({
+          category: 'event',
+          fact: `Event mentioned: ${eventMatch[0]} in "${text.slice(0, 50)}"`,
+          sourceMessageId: msg.id,
+          confidence: 0.85,
+        });
+      }
+
       // Preference detection heuristic
-      const prefMatch = text.match(/(?:i prefer|i like|i love|i hate|my favorite|i don't like)\s+([^.,!?]+)/i);
+      const prefMatch = text.match(
+        /(?:i prefer|i like|i love|i hate|my favorite|i don't like|i enjoy|i'm not a fan)\s+([^.,!?]+)/i
+      );
       if (prefMatch) {
         facts.push({
           category: 'preference',
