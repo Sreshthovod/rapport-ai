@@ -55,4 +55,29 @@ export const ANIMATION_STYLES = `
     transform: translate(-50%, -50%) scale(2);
     transition: 0s;
   }
+
+  @keyframes rapportShimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .rapport-shimmer {
+    background: var(--rapport-shimmer-bg);
+    background-size: 200% 100%;
+    animation: rapportShimmer 1.5s infinite linear;
+  }
+
+  @keyframes blinkingCaret {
+    from, to { border-color: transparent }
+    50% { border-color: var(--rapport-accent) }
+  }
+
+  .rapport-caret {
+    border-right: 2px solid var(--rapport-accent);
+    animation: blinkingCaret 0.75s step-end infinite;
+  }
 `;

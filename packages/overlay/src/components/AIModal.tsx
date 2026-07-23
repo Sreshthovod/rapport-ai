@@ -197,78 +197,72 @@ export const AIModal: React.FC<AIModalProps> = ({
       style={{
         marginTop: '8px',
         width: '420px',
-        maxHeight: 'min(640px, 85vh)',
+        maxHeight: 'min(680px, 88vh)',
         transform: `translate(${position.x}px, ${position.y}px)`,
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--rapport-bg, #1e2227)',
-        border: '1px solid var(--rapport-border, rgba(255, 255, 255, 0.12))',
-        borderRadius: '12px',
-        boxShadow: '0 16px 36px rgba(0, 0, 0, 0.35)',
-        padding: '16px',
-        fontFamily: 'Inter, system-ui, sans-serif',
-        color: 'var(--rapport-text-primary, #ffffff)',
-        backdropFilter: 'blur(16px)',
+        background: 'var(--rapport-bg)',
+        border: '1px solid var(--rapport-border)',
+        borderRadius: 'var(--rapport-radius-lg)',
+        boxShadow: 'var(--rapport-shadow)',
+        padding: '18px',
+        fontFamily: 'var(--rapport-font-family)',
+        color: 'var(--rapport-text-primary)',
+        backdropFilter: 'var(--rapport-blur)',
         overflow: 'hidden',
         boxSizing: 'border-box',
         zIndex: 99999,
-        resize: 'both',
       }}
     >
-      {/* Modal Header — Draggable */}
+      {/* Premium Header — Draggable */}
       <div
         onMouseDown={handleMouseDown}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '10px',
-          paddingBottom: '8px',
-          borderBottom: '1px solid var(--rapport-border, rgba(255, 255, 255, 0.1))',
+          marginBottom: '14px',
+          paddingBottom: '10px',
+          borderBottom: '1px solid var(--rapport-border)',
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           flexShrink: 0,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--rapport-accent, #00a884)' }}>
-            Rapport AI Copilot
-          </span>
-          <span
+          <div
             style={{
-              fontSize: '10px',
-              padding: '2px 6px',
-              borderRadius: '8px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: '#9ca3af',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: error ? '#ef4444' : loading ? '#eab308' : 'var(--rapport-accent)',
+              boxShadow: error ? '0 0 8px #ef4444' : loading ? '0 0 8px #eab308' : '0 0 8px var(--rapport-accent)',
+              transition: 'all 0.3s ease',
             }}
-          >
-            {displayProviderLabel}
+          />
+          <span style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '-0.02em' }}>
+            Rapport AI
           </span>
-          {latencyMs && (
-            <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>
-              ⚡ {latencyMs}
-            </span>
-          )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {activeSettings.developerModeUnlocked && (
             <button
               onClick={() => setShowDevPanel(!showDevPanel)}
               style={{
-                background: showDevPanel ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '4px',
-                color: showDevPanel ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
+                background: showDevPanel ? 'var(--rapport-accent-muted)' : 'transparent',
+                border: '1px solid var(--rapport-border)',
+                borderRadius: 'var(--rapport-radius-sm)',
+                color: showDevPanel ? 'var(--rapport-accent)' : 'var(--rapport-text-secondary)',
                 cursor: 'pointer',
                 fontSize: '11px',
-                padding: '2px 6px',
+                padding: '3px 8px',
+                fontWeight: 500,
+                transition: 'all var(--rapport-transition-fast)',
               }}
-              title="Toggle Developer Observability Inspector"
+              title="Toggle Diagnostics Trace"
             >
-              🛠️ Dev
+              🛠️ Diagnostics
             </button>
           )}
           {onRegenerate && !loading && (
@@ -276,14 +270,16 @@ export const AIModal: React.FC<AIModalProps> = ({
               onClick={onRegenerate}
               style={{
                 background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                borderRadius: '4px',
-                color: '#9ca3af',
+                border: '1px solid var(--rapport-border)',
+                borderRadius: 'var(--rapport-radius-sm)',
+                color: 'var(--rapport-text-secondary)',
                 cursor: 'pointer',
                 fontSize: '11px',
-                padding: '2px 6px',
+                padding: '3px 8px',
+                fontWeight: 500,
+                transition: 'all var(--rapport-transition-fast)',
               }}
-              title="Regenerate (Cmd+Enter)"
+              title="Regenerate suggestions (Cmd+Enter)"
             >
               🔄 Refresh
             </button>
@@ -293,12 +289,13 @@ export const AIModal: React.FC<AIModalProps> = ({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#9ca3af',
+              color: 'var(--rapport-text-secondary)',
               cursor: 'pointer',
               fontSize: '14px',
               padding: '2px 4px',
+              lineHeight: 1,
             }}
-            title="Close (Esc)"
+            title="Close panel (Esc)"
           >
             ✕
           </button>
@@ -321,45 +318,81 @@ export const AIModal: React.FC<AIModalProps> = ({
 
       {!showSettings && (
         <>
+          {/* AI Copilot Badge Panel (Elegant inline tags) */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              flexWrap: 'wrap',
+              marginBottom: '12px',
+              fontSize: '10.5px',
+              fontWeight: 500,
+              color: 'var(--rapport-text-secondary)',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
+              🤖 {displayProviderLabel} ({modelName})
+            </span>
+            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
+              💬 Mode: {activeSettings.conversationMode}
+            </span>
+            <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
+              🎭 Style: {activeSettings.suggestionPersonality}
+            </span>
+            {contextSignals.preferredLanguage && (
+              <span style={{ padding: '2px 6px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', border: '1px solid var(--rapport-border)' }}>
+                🌐 Lang: {contextSignals.preferredLanguage}
+              </span>
+            )}
+            {latencyMs && (
+              <span style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.08)', color: '#10b981', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                ⚡ {latencyMs}
+              </span>
+            )}
+          </div>
+
           {/* Proactive Copilot Recommendation Tip */}
           {copilotTip && (
             <div
               style={{
-                background: 'rgba(0, 168, 132, 0.12)',
-                border: '1px solid rgba(0, 168, 132, 0.3)',
-                borderRadius: '6px',
-                padding: '6px 10px',
-                marginBottom: '8px',
-                fontSize: '11px',
+                background: 'var(--rapport-accent-muted)',
+                border: '1px solid var(--rapport-border)',
+                borderRadius: 'var(--rapport-radius)',
+                padding: '8px 12px',
+                marginBottom: '12px',
+                fontSize: '11.5px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '8px',
                 flexShrink: 0,
+                color: 'var(--rapport-text-primary)',
               }}
             >
               <span>💡</span>
-              <span style={{ fontWeight: 600, color: 'var(--rapport-accent, #00a884)' }}>Copilot Tip:</span>
-              <span style={{ color: '#ffffff', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+              <span style={{ fontWeight: 600, color: 'var(--rapport-accent)' }}>Copilot:</span>
+              <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', flex: 1 }}>
                 {copilotTip}
               </span>
             </div>
           )}
 
           {/* Category Filter Tabs */}
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '10px', overflowX: 'auto', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', overflowX: 'auto', flexShrink: 0, paddingBottom: '2px' }}>
             {['All', 'Quick', 'Natural', 'Professional', 'Funny', 'Flirty'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategoryFilter(cat)}
                 style={{
-                  padding: '3px 9px',
-                  borderRadius: '12px',
-                  border: activeCategoryFilter === cat ? '1px solid var(--rapport-accent, #00a884)' : '1px solid rgba(255, 255, 255, 0.1)',
-                  background: activeCategoryFilter === cat ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-                  color: activeCategoryFilter === cat ? 'var(--rapport-accent, #00a884)' : '#9ca3af',
-                  fontSize: '10.5px',
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  border: activeCategoryFilter === cat ? '1px solid var(--rapport-accent)' : '1px solid var(--rapport-border)',
+                  background: activeCategoryFilter === cat ? 'var(--rapport-accent-muted)' : 'transparent',
+                  color: activeCategoryFilter === cat ? 'var(--rapport-accent)' : 'var(--rapport-text-secondary)',
+                  fontSize: '11px',
                   fontWeight: 600,
                   cursor: 'pointer',
+                  transition: 'all var(--rapport-transition-fast)',
                 }}
               >
                 {cat}
@@ -372,137 +405,140 @@ export const AIModal: React.FC<AIModalProps> = ({
             style={{
               flex: 1,
               overflowY: 'auto',
-              paddingRight: '4px',
+              paddingRight: '2px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px',
+              gap: '12px',
             }}
           >
-            {/* Real-Time Streaming Text Display */}
+            {/* Real-Time Streaming Text Display with Caret */}
             {loading && streamingText && (
               <div
                 style={{
-                  padding: '12px',
-                  background: 'rgba(0, 168, 132, 0.08)',
-                  border: '1px solid rgba(0, 168, 132, 0.3)',
-                  borderRadius: '8px',
-                  fontSize: '12.5px',
-                  lineHeight: '1.45',
-                  color: '#ffffff',
+                  padding: '14px',
+                  background: 'var(--rapport-bg-hover)',
+                  border: '1px solid var(--rapport-border)',
+                  borderRadius: 'var(--rapport-radius)',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  color: 'var(--rapport-text-primary)',
                 }}
               >
-                <div style={{ fontSize: '10px', color: 'var(--rapport-accent, #00a884)', fontWeight: 600, marginBottom: '4px' }}>
-                  ⚡ STREAMING RESPONSE...
+                <div style={{ fontSize: '10px', color: 'var(--rapport-accent)', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '6px' }}>
+                  ⚡ Streaming Suggestion...
                 </div>
-                "{streamingText}"
-                <span className="blinking-cursor" style={{ fontWeight: 'bold', color: 'var(--rapport-accent, #00a884)' }}>|</span>
+                <span>"{streamingText}"</span>
+                <span className="rapport-caret" style={{ marginLeft: '2px' }}></span>
               </div>
             )}
 
-            {/* Standard Loading Spinner State */}
+            {/* Shimmer Skeleton Loading State */}
             {loading && !streamingText && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 0', gap: '10px' }}>
-                <div
-                  style={{
-                    width: '26px',
-                    height: '26px',
-                    border: '2px solid rgba(255, 255, 255, 0.1)',
-                    borderTopColor: 'var(--rapport-accent, #00a884)',
-                    borderRadius: '50%',
-                    animation: 'spin 0.8s linear infinite',
-                  }}
-                />
-                <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 500 }}>
-                  Orchestrating context & generating suggestions...
-                </span>
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '8px 0' }}>
+                {[1, 2, 3].map((val) => (
+                  <div
+                    key={val}
+                    style={{
+                      height: '80px',
+                      borderRadius: 'var(--rapport-radius)',
+                      border: '1px solid var(--rapport-border)',
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <div className="rapport-shimmer" style={{ width: '60px', height: '14px', borderRadius: '4px' }} />
+                      <div className="rapport-shimmer" style={{ width: '40px', height: '14px', borderRadius: '4px' }} />
+                    </div>
+                    <div className="rapport-shimmer" style={{ width: '85%', height: '16px', borderRadius: '4px' }} />
+                    <div className="rapport-shimmer" style={{ width: '50%', height: '12px', borderRadius: '4px' }} />
+                  </div>
+                ))}
               </div>
             )}
 
             {/* Error State */}
             {!loading && error && (
-              <div style={{ padding: '12px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', borderRadius: '8px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
-                <div style={{ fontSize: '11px', color: '#d1d5db' }}>{error}</div>
+              <div style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--rapport-radius)' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)' }}>{error}</div>
               </div>
             )}
 
             {/* Empty State */}
             {!loading && !error && (!data || suggestions.length === 0) && (
-              <div style={{ padding: '24px 12px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>
-                No active chat selected. Open a thread in WhatsApp Web to generate contextual suggestions.
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--rapport-text-tertiary)', fontSize: '12.5px' }}>
+                No active chat thread selected. Open a conversation in WhatsApp to receive suggestions.
               </div>
             )}
 
             {/* Contact Intelligence Card */}
             {!loading && !error && data && contextSignals.relationshipType && (
               <div style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '8px',
+                background: 'var(--rapport-bg-hover)',
+                border: '1px solid var(--rapport-border)',
+                borderRadius: 'var(--rapport-radius)',
                 overflow: 'hidden',
-                transition: 'all 0.2s ease',
+                transition: 'all var(--rapport-transition-normal)',
               }}>
                 <div
                   onClick={() => setIntelCollapsed(!intelCollapsed)}
                   style={{
-                    padding: '8px 12px',
+                    padding: '10px 14px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
-                    background: 'rgba(255, 255, 255, 0.02)',
+                    background: 'rgba(255, 255, 255, 0.01)',
                     userSelect: 'none',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: 'var(--rapport-accent, #00a884)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    <span>👤</span> Contact Intelligence: {contextSignals.relationshipType}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 700, color: 'var(--rapport-accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    👤 Contact Profile: {contextSignals.relationshipType}
                   </div>
-                  <span style={{ fontSize: '10px', color: '#9ca3af', transform: intelCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', display: 'inline-block', transition: 'transform 0.15s ease' }}>▼</span>
+                  <span style={{ fontSize: '10px', color: 'var(--rapport-text-secondary)', transform: intelCollapsed ? 'rotate(0deg)' : 'rotate(180deg)', display: 'inline-block', transition: 'transform 0.15s ease' }}>▼</span>
                 </div>
 
                 {!intelCollapsed && (
                   <div style={{
-                    padding: '10px 12px',
+                    padding: '12px 14px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '8px',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                    fontSize: '11.5px',
-                    lineHeight: 1.4,
-                    color: '#e5e7eb',
+                    gap: '10px',
+                    borderTop: '1px solid var(--rapport-border)',
+                    fontSize: '12px',
+                    color: 'var(--rapport-text-secondary)',
                   }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                       <div>
-                        <span style={{ color: '#9ca3af' }}>Depth: </span>
-                        <strong>{contextSignals.conversationDepth >= 70 ? 'Deep' : contextSignals.conversationDepth >= 40 ? 'Medium' : 'Casual'}</strong> ({contextSignals.conversationDepth}/100)
+                        Depth: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.conversationDepth >= 70 ? 'Deep' : contextSignals.conversationDepth >= 40 ? 'Medium' : 'Casual'}</strong> ({contextSignals.conversationDepth}/100)
                       </div>
                       <div>
-                        <span style={{ color: '#9ca3af' }}>Lang: </span>
-                        <strong>{contextSignals.preferredLanguage || 'English'}</strong>
+                        Language: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.preferredLanguage || 'English'}</strong>
                       </div>
                       <div>
-                        <span style={{ color: '#9ca3af' }}>Frequency: </span>
-                        <strong>{contextSignals.messagesPerDay > 20 ? '⚡ High' : contextSignals.messagesPerDay > 5 ? 'Moderate' : 'Low'}</strong> ({contextSignals.messagesPerDay || 0} msgs/day)
+                        Frequency: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.messagesPerDay > 20 ? '⚡ High' : contextSignals.messagesPerDay > 5 ? 'Moderate' : 'Low'}</strong> ({contextSignals.messagesPerDay || 0} msgs/day)
                       </div>
                       <div>
-                        <span style={{ color: '#9ca3af' }}>Emojis: </span>
-                        <strong>{contextSignals.emojiUsage === 'frequent' ? 'Frequent' : contextSignals.emojiUsage === 'rare' ? 'Rare' : 'None'}</strong>
+                        Emojis: <strong style={{ color: 'var(--rapport-text-primary)' }}>{contextSignals.emojiUsage === 'frequent' ? 'Frequent' : contextSignals.emojiUsage === 'rare' ? 'Rare' : 'None'}</strong>
                       </div>
                     </div>
 
                     {contextSignals.commonTopics && contextSignals.commonTopics.length > 0 && (
-                      <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '6px', marginTop: '2px' }}>
-                        <div style={{ color: '#9ca3af', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600, marginBottom: '4px' }}>Topics Discussed</div>
+                      <div style={{ borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '4px' }}>
+                        <div style={{ color: 'var(--rapport-text-tertiary)', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>Topics Discussed</div>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                           {contextSignals.commonTopics.map((topic: string, i: number) => (
                             <span key={i} style={{
                               fontSize: '10px',
-                              background: 'rgba(255,255,255,0.06)',
-                              border: '1px solid rgba(255,255,255,0.08)',
+                              background: 'var(--rapport-bg-input)',
+                              border: '1px solid var(--rapport-border)',
                               borderRadius: '4px',
-                              padding: '1px 5px',
-                              color: '#9ca3af',
+                              padding: '2px 6px',
+                              color: 'var(--rapport-text-secondary)',
                             }}>{topic}</span>
                           ))}
                         </div>
@@ -513,7 +549,7 @@ export const AIModal: React.FC<AIModalProps> = ({
               </div>
             )}
 
-            {/* Suggestion Cards */}
+            {/* ChatGPT-Style Suggestion Cards */}
             {!loading && !error && suggestions.length > 0 && (
               suggestions.map((sug, idx) => {
                 const toneStyle = getToneColor(sug.tone);
@@ -526,31 +562,32 @@ export const AIModal: React.FC<AIModalProps> = ({
                     key={sug.id}
                     onClick={() => setSelectedIndex(idx)}
                     style={{
-                      background: isSelected ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.02)',
-                      border: isSelected ? '1px solid var(--rapport-accent, #00a884)' : '1px solid rgba(255, 255, 255, 0.08)',
-                      borderRadius: '8px',
-                      padding: '10px 12px',
+                      background: isSelected ? 'var(--rapport-bg-hover)' : 'rgba(255, 255, 255, 0.01)',
+                      border: isSelected ? '1px solid var(--rapport-accent)' : '1px solid var(--rapport-border)',
+                      borderRadius: 'var(--rapport-radius)',
+                      padding: '14px',
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '8px',
-                      transition: 'border 0.15s ease',
+                      gap: '10px',
+                      transition: 'all var(--rapport-transition-fast)',
                       cursor: 'pointer',
+                      position: 'relative',
                     }}
                   >
-                    {/* Card Header: Category, Tone & Pin */}
+                    {/* Header bar */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {sug.category && (
-                          <span style={{ fontSize: '10px', padding: '1px 6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px', color: '#d1d5db', fontWeight: 600 }}>
+                          <span style={{ fontSize: '10.5px', padding: '2px 7px', background: 'var(--rapport-bg-hover)', borderRadius: '4px', color: 'var(--rapport-text-secondary)', fontWeight: 600 }}>
                             {sug.category}
                           </span>
                         )}
                         <span
                           style={{
-                            padding: '1px 7px',
+                            padding: '2px 7px',
                             background: toneStyle.bg,
                             border: `1px solid ${toneStyle.border}`,
-                            borderRadius: '10px',
+                            borderRadius: '12px',
                             color: toneStyle.text,
                             fontSize: '10.5px',
                             fontWeight: 600,
@@ -561,7 +598,7 @@ export const AIModal: React.FC<AIModalProps> = ({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)' }}>
                           {Math.round((sug.confidence || 0.9) * 100)}% match
                         </span>
                         <button
@@ -570,74 +607,108 @@ export const AIModal: React.FC<AIModalProps> = ({
                             background: 'transparent',
                             border: 'none',
                             cursor: 'pointer',
-                            fontSize: '12px',
-                            color: isPinned ? '#f59e0b' : '#6b7280',
+                            fontSize: '13px',
+                            color: isPinned ? '#f59e0b' : 'var(--rapport-text-tertiary)',
                           }}
-                          title={isPinned ? 'Unpin' : 'Pin to top'}
+                          title={isPinned ? 'Unpin suggestion' : 'Pin suggestion to top'}
                         >
                           📌
                         </button>
                       </div>
                     </div>
 
-                    {/* Suggestion Quote Text */}
+                    {/* Faux ChatGPT Content Block */}
                     <div
                       style={{
-                        fontSize: '12.5px',
-                        lineHeight: '1.45',
-                        color: '#ffffff',
-                        fontWeight: 500,
-                        background: 'rgba(0, 0, 0, 0.2)',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        fontSize: '13px',
+                        lineHeight: '1.5',
+                        color: 'var(--rapport-text-primary)',
+                        background: 'var(--rapport-bg-input)',
+                        padding: '10px 12px',
+                        borderRadius: 'var(--rapport-radius-sm)',
+                        border: '1px solid var(--rapport-border)',
                       }}
                     >
                       "{sug.text}"
                     </div>
 
-                    {/* Explanation */}
-                    <div style={{ fontSize: '11px', color: '#9ca3af', fontStyle: 'italic' }}>
-                      {sug.explanation}
-                    </div>
+                    {sug.explanation && (
+                      <div style={{ fontSize: '11px', color: 'var(--rapport-text-secondary)', fontStyle: 'italic', paddingLeft: '4px' }}>
+                        {sug.explanation}
+                      </div>
+                    )}
 
-                    {/* Action Buttons: Copy & Insert */}
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '2px' }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCopy(sug.text, sug.id); }}
-                        style={{
-                          padding: '4px 10px',
-                          background: isCopied ? 'rgba(0, 168, 132, 0.2)' : 'transparent',
-                          border: `1px solid ${isCopied ? 'var(--rapport-accent, #00a884)' : 'rgba(255, 255, 255, 0.15)'}`,
-                          borderRadius: '6px',
-                          color: isCopied ? 'var(--rapport-accent, #00a884)' : '#ffffff',
-                          fontSize: '11px',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                        }}
-                      >
-                        {isCopied ? 'Copied! ✓' : '📋 Copy'}
-                      </button>
-                      {onInsert && (
+                    {/* Action Toolbar (Shorter, Longer, Rewrite, Copy, Insert) */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--rapport-border)', paddingTop: '8px', marginTop: '2px' }}>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {/* Progressive refinement modifiers */}
+                        {['Shorter', 'Longer', 'Rewrite'].map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Mock modification by updating suggestion text or copying
+                              const updatedText = mode === 'Shorter' 
+                                ? sug.text.split(/[.,!?]/)[0] + '.'
+                                : mode === 'Longer'
+                                ? sug.text + ' Hope you are doing well and everything is smooth!'
+                                : 'Hey! ' + sug.text;
+                              sug.text = updatedText;
+                              if (onInsert) onInsert(updatedText);
+                            }}
+                            style={{
+                              padding: '2px 6px',
+                              background: 'transparent',
+                              border: '1px solid var(--rapport-border)',
+                              borderRadius: '4px',
+                              color: 'var(--rapport-text-secondary)',
+                              fontSize: '10px',
+                              cursor: 'pointer',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
                         <button
-                          onClick={(e) => { e.stopPropagation(); onInsert(sug.text); }}
+                          onClick={(e) => { e.stopPropagation(); handleCopy(sug.text, sug.id); }}
                           style={{
                             padding: '4px 10px',
-                            background: 'var(--rapport-accent, #00a884)',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: '#ffffff',
+                            background: isCopied ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                            border: `1px solid ${isCopied ? '#10b981' : 'var(--rapport-border)'}`,
+                            borderRadius: 'var(--rapport-radius-sm)',
+                            color: isCopied ? '#10b981' : 'var(--rapport-text-primary)',
                             fontSize: '11px',
-                            fontWeight: 600,
+                            fontWeight: 500,
                             cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                           }}
                         >
-                          Insert Draft ↵
+                          {isCopied ? 'Copied! ✓' : '📋 Copy'}
                         </button>
-                      )}
+                        {onInsert && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onInsert(sug.text); }}
+                            style={{
+                              padding: '4px 10px',
+                              background: 'var(--rapport-accent)',
+                              border: 'none',
+                              borderRadius: 'var(--rapport-radius-sm)',
+                              color: '#ffffff',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Insert Draft ↵
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -645,7 +716,7 @@ export const AIModal: React.FC<AIModalProps> = ({
             )}
           </div>
 
-          {/* Developer Observability & Pipeline Diagnostics Drawer Panel */}
+          {/* Developer Diagnostics Panel */}
           {showDevPanel && (
             (() => {
               const diag = (typeof AIPipelineInspector !== 'undefined' && AIPipelineInspector && typeof AIPipelineInspector.getInstance === 'function')
@@ -667,68 +738,42 @@ export const AIModal: React.FC<AIModalProps> = ({
                 <div
                   style={{
                     marginTop: '10px',
-                    padding: '10px',
-                    background: 'rgba(0, 0, 0, 0.45)',
-                    border: '1px solid rgba(0, 168, 132, 0.3)',
-                    borderRadius: '8px',
-                    fontSize: '10.5px',
+                    padding: '12px',
+                    background: 'var(--rapport-bg-hover)',
+                    border: '1px solid var(--rapport-border)',
+                    borderRadius: 'var(--rapport-radius)',
+                    fontSize: '11px',
                     maxHeight: '180px',
                     overflowY: 'auto',
                     fontFamily: 'monospace',
                     flexShrink: 0,
-                    color: '#e5e7eb',
+                    color: 'var(--rapport-text-primary)',
                   }}
                 >
-                  <div style={{ color: 'var(--rapport-accent, #00a884)', fontWeight: 'bold', marginBottom: '6px' }}>
-                    🛠️ PIPELINE DIAGNOSTICS & STAGE TRACE
+                  <div style={{ color: 'var(--rapport-accent)', fontWeight: 'bold', marginBottom: '8px' }}>
+                    🛠️ Pipeline Stage Trace
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '6px' }}>
-                    <div><span style={{ color: '#9ca3af' }}>Current Stage:</span> {diag.currentStage}</div>
-                    <div><span style={{ color: '#9ca3af' }}>Total Latency:</span> {diag.totalDurationMs ? `${diag.totalDurationMs}ms` : (latencyMs ? `${latencyMs}ms` : 'In Progress')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Stage:</span> {diag.currentStage}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Latency:</span> {diag.totalDurationMs ? `${diag.totalDurationMs}ms` : (latencyMs ? `${latencyMs}ms` : 'In Progress')}</div>
                     <div>
-                      <span style={{ color: '#9ca3af' }}>Status:</span>{' '}
+                      <span style={{ color: 'var(--rapport-text-secondary)' }}>Status:</span>{' '}
                       <span style={{ color: error || !diag.success ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-                        {error || !diag.success ? '❌ Failed' : '✅ Success'}
+                        {error || !diag.success ? 'Failed' : 'Success'}
                       </span>
                     </div>
-                    <div><span style={{ color: '#9ca3af' }}>Provider:</span> {displayProviderLabel} ({rawProviderId})</div>
-                    <div><span style={{ color: '#9ca3af' }}>Model:</span> {modelName}</div>
-                    <div><span style={{ color: '#9ca3af' }}>Prompt Length:</span> {totalPromptLen} chars</div>
-                    <div><span style={{ color: '#9ca3af' }}>Completion Tokens:</span> {diag.completionTokens ?? 'N/A'}</div>
-                    <div><span style={{ color: '#9ca3af' }}>Finish Reason:</span> {diag.finishReason}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Provider:</span> {displayProviderLabel}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Model:</span> {modelName}</div>
+                    <div><span style={{ color: 'var(--rapport-text-secondary)' }}>Prompt:</span> {totalPromptLen} chars</div>
                   </div>
 
-                  {(error || diag.lastError) && (
-                    <div style={{ color: '#ef4444', background: 'rgba(239,68,68,0.15)', padding: '4px 6px', borderRadius: '4px', marginBottom: '6px' }}>
-                      ⚠️ Last Error: {error || diag.lastError}
+                  {diag.stageTimings.map((st, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid var(--rapport-border)' }}>
+                      <span>{st.stage}</span>
+                      <span style={{ color: '#10b981', fontWeight: 600 }}>{st.durationMs}ms</span>
                     </div>
-                  )}
-
-                  <div style={{ fontWeight: 600, color: '#9ca3af', marginBottom: '4px' }}>Stage Timings Breakdown:</div>
-                  {diag.stageTimings.length === 0 ? (
-                    <div style={{ color: '#6b7280', fontStyle: 'italic' }}>No stage timings recorded yet. Click ✨ Generate to run pipeline.</div>
-                  ) : (
-                    diag.stageTimings.map((st, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <span style={{ color: st.status === 'error' ? '#ef4444' : st.status === 'timeout' ? '#f59e0b' : '#d1d5db' }}>
-                          {st.stage}
-                        </span>
-                        <span style={{ color: st.status === 'ok' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                          {st.durationMs}ms {st.status !== 'ok' ? `(${st.status.toUpperCase()})` : ''}
-                        </span>
-                      </div>
-                    ))
-                  )}
-
-                  {compiledPrompt && (
-                    <>
-                      <div style={{ marginTop: '6px', color: '#9ca3af', fontWeight: 600 }}>System Prompt Preview:</div>
-                      <div style={{ whiteSpace: 'pre-wrap', color: '#9ca3af', background: 'rgba(0,0,0,0.4)', padding: '4px', borderRadius: '4px', fontSize: '10px' }}>
-                        {compiledPrompt.systemPrompt.slice(0, 160)}...
-                      </div>
-                    </>
-                  )}
+                  ))}
                 </div>
               );
             })()
