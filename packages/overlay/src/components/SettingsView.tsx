@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
-  ConversationStyle,
   LLMProviderId,
-  OverlayPosition,
   RapportSettings,
   ThemePreference,
   WritingStyleProfile,

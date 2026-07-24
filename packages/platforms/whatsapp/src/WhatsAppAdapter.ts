@@ -10,7 +10,7 @@ import {
   parseMessages,
   validateWhatsAppDOM,
 } from './parser.js';
-import { SELECTORS, WhatsAppSelectors } from './selectors.js';
+import { WhatsAppSelectors } from './selectors.js';
 import {
   ActiveConversation,
   ConversationObserverCallback,

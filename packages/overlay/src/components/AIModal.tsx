@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AIPipelineInspector, AISuggestion, CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
-import { ProviderManager, SettingsManager } from '@rapport/ai-core';
-import { SettingsView } from './SettingsView.js';
+import { SettingsManager } from '@rapport/ai-core';
 
 export const getProviderLabel = (providerId?: string): string => {
   const norm = (providerId || '').toLowerCase();

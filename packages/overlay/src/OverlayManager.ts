@@ -7,7 +7,7 @@ import { FloatingToolbar } from './FloatingToolbar.js';
 import { createPositioningEngine, PositioningEngine } from './Positioning.js';
 import { createShadowHost, ShadowRootHost } from './ShadowRoot.js';
 import { detectSystemTheme } from './Theme.js';
-import { OverlayManagerOptions, PositionCoordinates, ThemeMode } from './types.js';
+import { OverlayManagerOptions, PositionCoordinates } from './types.js';
 
 export class OverlayManager {
   private shadowHost: ShadowRootHost | null = null;
