@@ -1,7 +1,7 @@
 # Rapport AI — Interpersonal Intelligence Browser Engine
 
 > **Never send the wrong message to the right person.**  
-> An autonomous, privacy-first AI copilot embedded directly into real-time web messaging platforms (Slack Web & WhatsApp Web).
+> An autonomous, privacy-first AI copilot embedded directly into real-time web messaging platforms (WhatsApp Web).
 
 ---
 
@@ -122,7 +122,7 @@ rapport-ai/
    - Open Chrome and navigate to `chrome://extensions`.
    - Enable **Developer mode** (top-right toggle).
    - Click **Load unpacked** and select `apps/extension/dist`.
-   - Open Slack Web (`app.slack.com`) or WhatsApp Web (`web.whatsapp.com`) to begin.
+   - Open WhatsApp Web (`web.whatsapp.com`) to begin.
 
 ---
 
@@ -134,6 +134,4 @@ rapport-ai/
 
 ---
 
-## 📜 License
 
-MIT License © 2026 Rapport AI Team.
