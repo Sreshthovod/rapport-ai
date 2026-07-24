@@ -1,3 +1,5 @@
+import { ThemePreference } from '@rapport/shared';
+
 export type ThemeMode = 'light' | 'dark';
 
 export interface PositionCoordinates {
@@ -8,7 +10,7 @@ export interface PositionCoordinates {
 }
 
 export interface OverlayManagerOptions {
-  theme?: ThemeMode;
+  theme?: ThemePreference;
   targetElement?: HTMLElement | null;
   offsetY?: number;
   zIndex?: number;

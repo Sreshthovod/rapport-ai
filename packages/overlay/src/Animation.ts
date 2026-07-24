@@ -80,4 +80,37 @@ export const ANIMATION_STYLES = `
     border-right: 2px solid var(--rapport-accent);
     animation: blinkingCaret 0.75s step-end infinite;
   }
+
+  /* Centralized Premium Interactive Styles */
+  button {
+    outline: none;
+    transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-0.5px);
+    filter: brightness(1.04);
+  }
+  button:active:not(:disabled) {
+    transform: scale(0.97) translateY(0px) !important;
+    filter: brightness(0.96);
+  }
+  button:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 2px var(--rapport-bg-solid), 0 0 0 4px var(--rapport-accent) !important;
+  }
+
+  input, textarea, select {
+    outline: none;
+    transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  input:hover:not(:disabled), textarea:hover:not(:disabled), select:hover:not(:disabled) {
+    border-color: var(--rapport-border-hover) !important;
+  }
+  input:focus:not(:disabled), textarea:focus:not(:disabled), select:focus:not(:disabled) {
+    border-color: var(--rapport-accent) !important;
+    box-shadow: 0 0 0 1px var(--rapport-accent), 0 0 0 3px var(--rapport-accent-muted) !important;
+  }
+  input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: none !important;
+  }
 `;

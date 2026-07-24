@@ -182,6 +182,26 @@ export const AIModal: React.FC<AIModalProps> = ({
     posX: 0,
     posY: 0,
   });
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (dragCleanupRef.current) {
+        dragCleanupRef.current();
+      }
+    };
+  }, []);
+
+  const [shouldRender, setShouldRender] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+    } else {
+      const timer = setTimeout(() => setShouldRender(false), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
 
 
 
@@ -207,6 +227,12 @@ export const AIModal: React.FC<AIModalProps> = ({
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      dragCleanupRef.current = null;
+    };
+
+    dragCleanupRef.current = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -331,11 +357,17 @@ export const AIModal: React.FC<AIModalProps> = ({
           const idx = tabOrder.indexOf(activeTab);
           onTabChange(tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length]);
         }
+      } else if (e.key === 'Enter') {
+        const activeSug = suggestions[selectedIndex];
+        if (activeSug && onInsert && activeTab === 'AI') {
+          e.preventDefault();
+          onInsert(activeSug.text);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [visible, loading, onRegenerate, onClose, suggestions.length, activeTab, onTabChange]);
+  }, [visible, loading, onRegenerate, onClose, suggestions, selectedIndex, onInsert, activeTab, onTabChange]);
 
   // Extract Metadata Badges & Live Provider Info
   const activeSettings = SettingsManager.getInstance().getSettings();
@@ -367,15 +399,17 @@ export const AIModal: React.FC<AIModalProps> = ({
 
   const activeSuggestion = suggestions[selectedIndex];
 
+  if (!shouldRender) return null;
+
   return (
     <div
-      className="rapport-spring-enter"
+      className={visible ? 'rapport-spring-enter' : 'rapport-spring-exit'}
       style={{
         ...positioningStyle,
         width: '420px',
         height: '440px',
         transform: `translate(${position.x}px, ${position.y}px)`,
-        display: visible ? 'flex' : 'none',
+        display: 'flex',
         flexDirection: 'column',
         background: 'var(--rapport-bg)',
         border: '1px solid var(--rapport-border)',
@@ -403,8 +437,24 @@ export const AIModal: React.FC<AIModalProps> = ({
             filter: blur(0);
           }
         }
+        @keyframes rapportSpringExit {
+          from {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            filter: blur(0);
+          }
+          to {
+            opacity: 0;
+            transform: scale(0.93) translateY(8px);
+            filter: blur(2px);
+          }
+        }
         .rapport-spring-enter {
           animation: rapportSpringEnter 210ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          will-change: transform, opacity, filter;
+        }
+        .rapport-spring-exit {
+          animation: rapportSpringExit 150ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
           will-change: transform, opacity, filter;
         }
       `}</style>
@@ -584,16 +634,52 @@ export const AIModal: React.FC<AIModalProps> = ({
                 </div>
               )}
 
-              {!loading && error && (
+               {!loading && error && (
                 <div style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: 'var(--rapport-radius)', marginBottom: '12px' }}>
                   <div style={{ fontSize: '13px', fontWeight: 600, color: '#ef4444', marginBottom: '4px' }}>Unable to generate AI reply</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)' }}>{error}</div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)', marginBottom: '8px' }}>{error}</div>
+                  {onRegenerate && (
+                    <button
+                      onClick={onRegenerate}
+                      style={{
+                        background: 'var(--rapport-accent)',
+                        border: 'none',
+                        borderRadius: 'var(--rapport-radius-sm)',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      🔄 Retry
+                    </button>
+                  )}
                 </div>
               )}
 
               {!loading && !error && (!data || suggestions.length === 0) && (
-                <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--rapport-text-tertiary)', fontSize: '12.5px' }}>
-                  No suggestions available. Type something to get started.
+                <div
+                  style={{
+                    padding: '40px 16px',
+                    textAlign: 'center',
+                    background: 'var(--rapport-bg-hover)',
+                    border: '1px dashed var(--rapport-border)',
+                    borderRadius: 'var(--rapport-radius)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginBottom: '12px',
+                  }}
+                >
+                  <span style={{ fontSize: '24px' }}>✨</span>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--rapport-text-primary)' }}>
+                    Waiting for conversation context
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--rapport-text-secondary)', maxWidth: '280px', lineHeight: '1.4' }}>
+                    Rapport AI analyzes the latest messages automatically. Press <kbd style={{ background: 'var(--rapport-bg-input)', padding: '2px 4px', borderRadius: '4px', border: '1px solid var(--rapport-border)', fontSize: '10px', color: 'var(--rapport-text-primary)' }}>⌘K</kbd> to toggle the workspace.
+                  </div>
                 </div>
               )}
 

@@ -27,6 +27,19 @@ export class SettingsManager {
 
   constructor() {
     this.loadSettings();
+
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener((changes: any, areaName: string) => {
+        if (areaName === 'local' && changes.rapport_user_settings) {
+          this.settings = {
+            ...DEFAULT_RAPPORT_SETTINGS,
+            ...changes.rapport_user_settings.newValue,
+          };
+          this.syncWithProviderManager();
+          this.notifyListeners();
+        }
+      });
+    }
   }
 
   public static getInstance(): SettingsManager {

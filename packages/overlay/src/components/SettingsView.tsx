@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   ConversationStyle,
   LLMProviderId,
@@ -59,7 +59,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   }, [settingsManager]);
 
   // Memory Viewer state
-  const memoryService = new MemoryService(BrowserStorageMemoryStore.getInstance());
+  const memoryService = useMemo(() => new MemoryService(BrowserStorageMemoryStore.getInstance()), []);
   const [memRecords, setMemRecords] = useState<MemoryRecord[]>([]);
   const [memSearch, setMemSearch] = useState('');
   const [memCategoryFilter, setMemCategoryFilter] = useState<MemoryCategory | 'all'>('all');
@@ -166,6 +166,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   const contentRef = useRef<HTMLDivElement>(null);
 
   const modalRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resizeCleanupRef.current) {
+        resizeCleanupRef.current();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (mode !== 'overlay') return;
@@ -646,6 +655,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
       isResizingRef.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      resizeCleanupRef.current = null;
       
       const finalSize = sizeRef.current;
       try {
@@ -658,6 +668,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
       } catch (err) {
         console.warn('Failed to save settings window size:', err);
       }
+    };
+
+    resizeCleanupRef.current = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);

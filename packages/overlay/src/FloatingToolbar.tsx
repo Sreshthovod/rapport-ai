@@ -32,6 +32,16 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
   const shortcutHint = isMac ? '⌘K' : 'Ctrl+K';
 
+  const pointerCleanupRef = React.useRef<(() => void) | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (pointerCleanupRef.current) {
+        pointerCleanupRef.current();
+      }
+    };
+  }, []);
+
   if (!visible) return null;
 
   return (
@@ -90,11 +100,17 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             const handleUp = () => {
               window.removeEventListener('pointermove', handleMove);
               window.removeEventListener('pointerup', handleUp);
+              pointerCleanupRef.current = null;
               if (!moved && onLogoClick) {
                 onLogoClick();
               }
             };
             
+            pointerCleanupRef.current = () => {
+              window.removeEventListener('pointermove', handleMove);
+              window.removeEventListener('pointerup', handleUp);
+            };
+
             window.addEventListener('pointermove', handleMove);
             window.addEventListener('pointerup', handleUp);
             if (onDragStart) {

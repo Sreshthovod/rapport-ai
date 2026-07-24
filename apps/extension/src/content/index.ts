@@ -21,6 +21,16 @@ function initRapportContentScript(): void {
     return;
   }
 
+  // Clean up any existing instances from prior installations/injections
+  if ((window as any).__rapportDispose) {
+    console.log('[Rapport] Cleaning up prior instance before re-initializing...');
+    try {
+      (window as any).__rapportDispose();
+    } catch (err) {
+      console.warn('[Rapport] Error cleaning up prior instance:', err);
+    }
+  }
+
   console.log('[Rapport] WhatsApp Detected');
 
   const onDomReady = (callback: () => void) => {
@@ -42,18 +52,46 @@ function initRapportContentScript(): void {
       overlay.mount(document.body);
       console.log('[Rapport] Overlay Mounted');
 
+      let checkInterval: ReturnType<typeof setInterval> | null = null;
+
       // ----------------------------------------------------------------
       // Dispose everything cleanly when page is unloaded
       // ----------------------------------------------------------------
       const handleUnload = () => {
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
         stopChatObserver();
         stopMessageObserver();
         stopDraftObserver();
         stopDOMObserver();
         adapter.dispose();
         overlay.dispose();
+
+        // Clean up status badge DOM element
+        const badge = document.getElementById('rapport-status-badge');
+        if (badge && badge.parentNode) {
+          badge.parentNode.removeChild(badge);
+        }
+
+        if ((window as any).__rapportDispose === handleUnload) {
+          delete (window as any).__rapportDispose;
+        }
       };
+      (window as any).__rapportDispose = handleUnload;
       window.addEventListener('beforeunload', handleUnload, { once: true });
+
+      // Run health check interval to clean up on context invalidation
+      checkInterval = setInterval(() => {
+        try {
+          if (!chrome.runtime?.id) {
+            handleUnload();
+          }
+        } catch {
+          handleUnload();
+        }
+      }, 1000);
 
       const updateStatusBadge = () => {
         const domResult = adapter.validateWhatsAppDOM();

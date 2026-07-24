@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
+import { CompiledPromptSpec, FakeAIResponse, ThemePreference } from '@rapport/shared';
 import { AIModal } from './components/AIModal.js';
 import { SettingsView } from './components/SettingsView.js';
 import { FloatingToolbar } from './FloatingToolbar.js';
@@ -14,9 +14,17 @@ export class OverlayManager {
   private reactRoot: Root | null = null;
   private positioningEngine: PositioningEngine;
   private stopPositionObserver: (() => void) | null = null;
+  private systemThemeMedia: MediaQueryList | null = null;
+
+  private handleSystemThemeChange = () => {
+    if (this.currentTheme === 'system' && this.shadowHost) {
+      this.shadowHost.setTheme(detectSystemTheme());
+      this.render();
+    }
+  };
 
   private isVisible: boolean = true;
-  private currentTheme: ThemeMode;
+  private currentTheme: ThemePreference;
   private targetElement: HTMLElement | null = null;
   private pendingCommitmentText?: string;
 
@@ -29,6 +37,7 @@ export class OverlayManager {
   // Unified Workspace States
   private workspaceVisible: boolean = false;
   private settingsVisible: boolean = false;
+  private settingsRendered: boolean = false;
   private activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' = 'AI';
   private aiModalLoading: boolean = false;
   private aiModalShowSettings: boolean = false;
@@ -50,8 +59,14 @@ export class OverlayManager {
   public mount(parentContainer: HTMLElement = document.body): void {
     if (this.shadowHost) return;
 
-    this.shadowHost = createShadowHost(this.currentTheme);
+    const resolvedTheme = this.currentTheme === 'system' ? detectSystemTheme() : this.currentTheme;
+    this.shadowHost = createShadowHost(resolvedTheme);
     parentContainer.appendChild(this.shadowHost.hostElement);
+
+    if (this.currentTheme === 'system' && typeof window !== 'undefined' && window.matchMedia) {
+      this.systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+      this.systemThemeMedia.addEventListener('change', this.handleSystemThemeChange);
+    }
 
     this.reactRoot = createRoot(this.shadowHost.containerElement);
 
@@ -103,6 +118,7 @@ export class OverlayManager {
 
   public showAISettings(): void {
     this.settingsVisible = true;
+    this.settingsRendered = true;
     this.render();
   }
 
@@ -149,10 +165,24 @@ export class OverlayManager {
     this.render();
   }
 
-  public setTheme(theme: ThemeMode): void {
+  public setTheme(theme: ThemePreference): void {
     this.currentTheme = theme;
+
+    if (theme === 'system') {
+      if (!this.systemThemeMedia && typeof window !== 'undefined' && window.matchMedia) {
+        this.systemThemeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+        this.systemThemeMedia.addEventListener('change', this.handleSystemThemeChange);
+      }
+    } else {
+      if (this.systemThemeMedia) {
+        this.systemThemeMedia.removeEventListener('change', this.handleSystemThemeChange);
+        this.systemThemeMedia = null;
+      }
+    }
+
     if (this.shadowHost) {
-      this.shadowHost.setTheme(theme);
+      const resolved = theme === 'system' ? detectSystemTheme() : theme;
+      this.shadowHost.setTheme(resolved);
     }
     this.render();
   }
@@ -260,6 +290,12 @@ export class OverlayManager {
         event.preventDefault();
         event.stopPropagation();
         this.render();
+        setTimeout(() => {
+          if (!this.settingsVisible) {
+            this.settingsRendered = false;
+            this.render();
+          }
+        }, 180);
         return;
       } else if (this.workspaceVisible) {
         this.workspaceVisible = false;
@@ -341,8 +377,20 @@ export class OverlayManager {
               this.render();
             },
             onSettingsClick: () => {
-              this.settingsVisible = !this.settingsVisible;
-              this.render();
+              if (this.settingsVisible) {
+                this.settingsVisible = false;
+                this.render();
+                setTimeout(() => {
+                  if (!this.settingsVisible) {
+                    this.settingsRendered = false;
+                    this.render();
+                  }
+                }, 180);
+              } else {
+                this.settingsVisible = true;
+                this.settingsRendered = true;
+                this.render();
+              }
             },
           }),
           React.createElement(AIModal, {
@@ -354,6 +402,7 @@ export class OverlayManager {
             },
             onSettingsClick: () => {
               this.settingsVisible = true;
+              this.settingsRendered = true;
               this.render();
             },
             loading: this.aiModalLoading,
@@ -377,7 +426,7 @@ export class OverlayManager {
               this.closeAIModal();
             },
           }),
-          this.settingsVisible && React.createElement(
+          this.settingsRendered && React.createElement(
             'div',
             {
               key: 'settings-backdrop',
@@ -394,14 +443,18 @@ export class OverlayManager {
                 backdropFilter: 'blur(10px)',
                 zIndex: 9999999,
                 boxSizing: 'border-box',
-                animation: 'rapportFadeIn 180ms ease forwards',
+                animation: this.settingsVisible
+                  ? 'rapportFadeIn 180ms ease forwards'
+                  : 'rapportFadeOut 180ms ease forwards',
               }
             },
             React.createElement(
               'div',
               {
                 style: {
-                  animation: 'rapportScaleUp 180ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                  animation: this.settingsVisible
+                    ? 'rapportScaleUp 180ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
+                    : 'rapportScaleDown 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -411,6 +464,12 @@ export class OverlayManager {
                 onClose: () => {
                   this.settingsVisible = false;
                   this.render();
+                  setTimeout(() => {
+                    if (!this.settingsVisible) {
+                      this.settingsRendered = false;
+                      this.render();
+                    }
+                  }, 180);
                 },
                 mode: 'overlay'
               })
@@ -421,9 +480,17 @@ export class OverlayManager {
               from { opacity: 0; }
               to { opacity: 1; }
             }
+            @keyframes rapportFadeOut {
+              from { opacity: 1; }
+              to { opacity: 0; }
+            }
             @keyframes rapportScaleUp {
               from { transform: scale(0.95); opacity: 0; }
               to { transform: scale(1); opacity: 1; }
+            }
+            @keyframes rapportScaleDown {
+              from { transform: scale(1); opacity: 1; }
+              to { transform: scale(0.95); opacity: 0; }
             }
           `)
         )
@@ -436,6 +503,11 @@ export class OverlayManager {
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
+
+    if (this.systemThemeMedia) {
+      this.systemThemeMedia.removeEventListener('change', this.handleSystemThemeChange);
+      this.systemThemeMedia = null;
+    }
 
     if (this.stopPositionObserver) {
       this.stopPositionObserver();
