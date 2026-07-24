@@ -4,7 +4,7 @@ import {
   ProviderCapabilities,
   ProviderResult,
 } from '@rapport/shared';
-import { AIProvider } from './AIProvider.js';
+import { AIProvider, ModelDescription } from './AIProvider.js';
 import { ApiKeyManager } from './ApiKeyManager.js';
 import { MetricsTracker } from './MetricsTracker.js';
 import { ModelRegistry } from './ModelRegistry.js';
@@ -358,4 +358,181 @@ export class OpenAIProvider implements AIProvider {
       return { success: false, error: err instanceof Error ? err.message : 'OpenAI stream error' };
     }
   }
+
+  public async verifyKey(apiKey: string): Promise<boolean> {
+    return this.validateKey(apiKey);
+  }
+
+  public async listModels(): Promise<ModelDescription[]> {
+    const cached = await this.getCachedModels();
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    return APPROVED_OPENAI_MODELS;
+  }
+
+  public async refreshModels(): Promise<ModelDescription[]> {
+    const apiKey = await this.keyManager.getKey(this.id);
+    if (!apiKey) {
+      return APPROVED_OPENAI_MODELS;
+    }
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/models', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (res.status !== 200) {
+        return APPROVED_OPENAI_MODELS;
+      }
+      const data = await res.json();
+      const rawModels = data.data || [];
+
+      // Filter out: Preview models, Deprecated models, Experimental models, Retired models
+      const filtered = rawModels.filter((m: any) => {
+        const idLower = (m.id || '').toLowerCase();
+        
+        // Only keep models starting with gpt- or o-
+        if (!idLower.startsWith('gpt-') && !idLower.startsWith('o1-') && !idLower.startsWith('o3-') && !idLower.startsWith('o-')) {
+          return false;
+        }
+
+        // Filter out: preview, deprecated, retired, instruct, vision, realtime, audio, moderation, embedding
+        if (idLower.includes('preview') ||
+            idLower.includes('deprecated') ||
+            idLower.includes('retired') ||
+            idLower.includes('instruct') ||
+            idLower.includes('vision') ||
+            idLower.includes('realtime') ||
+            idLower.includes('audio') ||
+            idLower.includes('moderation') ||
+            idLower.includes('embedding') ||
+            idLower.includes('internal') ||
+            idLower.includes('search')) {
+          return false;
+        }
+        return true;
+      });
+
+      // Map models to Clean Display Names and metadata
+      const mapped: ModelDescription[] = filtered.map((m: any) => {
+        const rawId = m.id;
+        const existing = APPROVED_OPENAI_MODELS.find(x => x.id === rawId);
+        if (existing) return existing;
+
+        const idLower = rawId.toLowerCase();
+        let displayName = rawId;
+        // Clean display name, e.g. gpt-4o-mini -> GPT-4o Mini
+        displayName = rawId
+          .split('-')
+          .map((word: string) => {
+            if (word === 'gpt') return 'GPT';
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ');
+
+        let speed = 'Fast';
+        let reasoning = 'Standard';
+        let useCase = 'Fast responses for daily messaging.';
+        let isRecommended = false;
+
+        if (idLower.includes('mini') || idLower.includes('flash')) {
+          speed = 'Blazing';
+          reasoning = 'Standard';
+          useCase = 'Fastest and lowest cost.';
+        } else if (idLower.includes('4o')) {
+          speed = 'Fast';
+          reasoning = 'High';
+          useCase = 'Best reasoning for emotionally complex conversations.';
+          isRecommended = true;
+        } else if (idLower.startsWith('o1') || idLower.startsWith('o3') || idLower.startsWith('o-')) {
+          speed = 'Moderate';
+          reasoning = 'Very High';
+          useCase = 'Deep reasoning for conflict resolution and long context.';
+        }
+
+        return {
+          id: rawId,
+          displayName,
+          speed,
+          reasoning,
+          useCase,
+          contextLength: idLower.includes('o') ? '200K tokens' : '128K tokens',
+          isRecommended,
+        };
+      });
+
+      // Sort: Recommended on top, then default, then others
+      const sorted = mapped.sort((a, b) => {
+        const aVal = (a.isRecommended ? 2 : 0) + (a.isDefault ? 1 : 0);
+        const bVal = (b.isRecommended ? 2 : 0) + (b.isDefault ? 1 : 0);
+        return bVal - aVal;
+      });
+
+      await this.setCachedModels(sorted);
+      return sorted.length > 0 ? sorted : APPROVED_OPENAI_MODELS;
+    } catch (err) {
+      console.warn('[OpenAIProvider] Failed to refresh models:', err);
+      return APPROVED_OPENAI_MODELS;
+    }
+  }
+
+  public async selectModel(modelId: string): Promise<void> {
+    console.log(`[OpenAIProvider] Selected model: ${modelId}`);
+  }
+
+  public async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<ProviderResult> {
+    return this.generateReply(request, options);
+  }
+
+  private async getCachedModels(): Promise<ModelDescription[] | null> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        const res = await chromeObj.storage.local.get([key]);
+        return res[key] || null;
+      }
+    } catch {}
+    return null;
+  }
+
+  private async setCachedModels(models: ModelDescription[]): Promise<void> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        await chromeObj.storage.local.set({ [key]: models });
+      }
+    } catch {}
+  }
 }
+
+const APPROVED_OPENAI_MODELS: ModelDescription[] = [
+  {
+    id: 'gpt-4o-mini',
+    displayName: 'GPT-4o Mini',
+    speed: 'Blazing',
+    reasoning: 'Standard',
+    useCase: 'Fastest and lowest cost.',
+    contextLength: '128K tokens',
+    isDefault: true,
+  },
+  {
+    id: 'gpt-4o',
+    displayName: 'GPT-4o',
+    speed: 'Fast',
+    reasoning: 'High',
+    useCase: 'Best reasoning for emotionally complex conversations.',
+    contextLength: '128K tokens',
+    isRecommended: true,
+  },
+  {
+    id: 'o3-mini',
+    displayName: 'o3-mini',
+    speed: 'Moderate',
+    reasoning: 'Very High',
+    useCase: 'Deep reasoning for conflict resolution and long context.',
+    contextLength: '200K tokens',
+  }
+];

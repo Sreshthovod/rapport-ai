@@ -6,7 +6,7 @@ import {
   ProviderResult,
 } from '@rapport/shared';
 import { ResponseEvaluator } from '../prompts/ResponseEvaluator.js';
-import { AIProvider } from './AIProvider.js';
+import { AIProvider, ModelDescription } from './AIProvider.js';
 
 export class FakeProvider implements AIProvider {
   public readonly id = 'fake-provider';
@@ -556,4 +556,37 @@ export class FakeProvider implements AIProvider {
 
     return fullResult;
   }
+
+  public async verifyKey(_apiKey: string): Promise<boolean> {
+    return true;
+  }
+
+  public async listModels(): Promise<ModelDescription[]> {
+    return APPROVED_FAKE_MODELS;
+  }
+
+  public async refreshModels(): Promise<ModelDescription[]> {
+    return APPROVED_FAKE_MODELS;
+  }
+
+  public async selectModel(modelId: string): Promise<void> {
+    console.log(`[FakeProvider] Selected model: ${modelId}`);
+  }
+
+  public async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<ProviderResult> {
+    return this.generateReply(request);
+  }
 }
+
+const APPROVED_FAKE_MODELS: ModelDescription[] = [
+  {
+    id: 'fake-deterministic',
+    displayName: 'Offline Deterministic Engine',
+    speed: 'Zero Latency',
+    reasoning: 'Rule-Based',
+    useCase: 'Local rules engine (No API key required).',
+    contextLength: '4K tokens',
+    isDefault: true,
+    isRecommended: true,
+  }
+];

@@ -3,7 +3,7 @@ export * from './context/index.js';
 export * from './intelligence/index.js';
 export * from './relationship/index.js';
 export * from './copilot/index.js';
-export type { AIProvider } from './providers/AIProvider.js';
+export type { AIProvider, ModelDescription } from './providers/AIProvider.js';
 export { FakeProvider } from './providers/FakeProvider.js';
 export { OpenAIProvider } from './providers/OpenAIProvider.js';
 export { ClaudeProvider } from './providers/ClaudeProvider.js';

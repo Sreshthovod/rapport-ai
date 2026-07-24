@@ -4,7 +4,7 @@ import {
   ProviderCapabilities,
   ProviderResult,
 } from '@rapport/shared';
-import { AIProvider } from './AIProvider.js';
+import { AIProvider, ModelDescription } from './AIProvider.js';
 import { ApiKeyManager } from './ApiKeyManager.js';
 import { MetricsTracker } from './MetricsTracker.js';
 import { SuggestionEngine } from '../prompts/SuggestionEngine.js';
@@ -281,4 +281,53 @@ export class ClaudeProvider implements AIProvider {
       return { success: false, error: err instanceof Error ? err.message : 'Claude stream error' };
     }
   }
+
+  public async verifyKey(apiKey: string): Promise<boolean> {
+    return this.validateKey(apiKey);
+  }
+
+  public async listModels(): Promise<ModelDescription[]> {
+    return APPROVED_CLAUDE_MODELS;
+  }
+
+  public async refreshModels(): Promise<ModelDescription[]> {
+    return APPROVED_CLAUDE_MODELS;
+  }
+
+  public async selectModel(modelId: string): Promise<void> {
+    console.log(`[ClaudeProvider] Selected model: ${modelId}`);
+  }
+
+  public async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<ProviderResult> {
+    return this.generateReply(request, options);
+  }
 }
+
+const APPROVED_CLAUDE_MODELS: ModelDescription[] = [
+  {
+    id: 'claude-3-5-sonnet-20241022',
+    displayName: 'Claude 3.5 Sonnet',
+    speed: 'Moderate',
+    reasoning: 'High',
+    useCase: 'Best reasoning for emotionally complex conversations.',
+    contextLength: '200K tokens',
+    isRecommended: true,
+    isDefault: true,
+  },
+  {
+    id: 'claude-3-5-haiku-20241022',
+    displayName: 'Claude 3.5 Haiku',
+    speed: 'Fast',
+    reasoning: 'Standard',
+    useCase: 'Fast responses for daily messaging.',
+    contextLength: '200K tokens',
+  },
+  {
+    id: 'claude-3-opus-20240229',
+    displayName: 'Claude 3 Opus',
+    speed: 'Slow',
+    reasoning: 'High',
+    useCase: 'Deep reasoning for conflict resolution and long context.',
+    contextLength: '200K tokens',
+  }
+];

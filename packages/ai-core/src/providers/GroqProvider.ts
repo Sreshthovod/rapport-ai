@@ -4,7 +4,7 @@ import {
   ProviderCapabilities,
   ProviderResult,
 } from '@rapport/shared';
-import { AIProvider } from './AIProvider.js';
+import { AIProvider, ModelDescription } from './AIProvider.js';
 import { ApiKeyManager } from './ApiKeyManager.js';
 import { MetricsTracker } from './MetricsTracker.js';
 import { SuggestionEngine } from '../prompts/SuggestionEngine.js';
@@ -278,4 +278,194 @@ export class GroqProvider implements AIProvider {
       return { success: false, error: err instanceof Error ? err.message : 'Groq stream error' };
     }
   }
+
+  public async verifyKey(apiKey: string): Promise<boolean> {
+    return this.validateKey(apiKey);
+  }
+
+  public async listModels(): Promise<ModelDescription[]> {
+    const cached = await this.getCachedModels();
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    return APPROVED_GROQ_MODELS;
+  }
+
+  public async refreshModels(): Promise<ModelDescription[]> {
+    const apiKey = await this.keyManager.getKey(this.id);
+    if (!apiKey) {
+      return APPROVED_GROQ_MODELS;
+    }
+
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/models', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (res.status !== 200) {
+        return APPROVED_GROQ_MODELS;
+      }
+      const data = await res.json();
+      const rawModels = data.data || [];
+
+      // Filter out: Preview models, Deprecated models, Experimental models, Retired models
+      const filtered = rawModels.filter((m: any) => {
+        const idLower = (m.id || '').toLowerCase();
+        
+        // Filter out: preview, deprecated, retired, whisper, vision, embedding, guard, experimental
+        if (idLower.includes('preview') ||
+            idLower.includes('deprecated') ||
+            idLower.includes('retired') ||
+            idLower.includes('whisper') ||
+            idLower.includes('vision') ||
+            idLower.includes('embed') ||
+            idLower.includes('guard') ||
+            idLower.includes('lc-') ||
+            idLower.includes('internal')) {
+          return false;
+        }
+
+        // Keep: llama, mixtral, gemma
+        if (idLower.includes('llama') || idLower.includes('mixtral') || idLower.includes('gemma')) {
+          return true;
+        }
+        return false;
+      });
+
+      // Map models to Clean Display Names and metadata
+      const mapped: ModelDescription[] = filtered.map((m: any) => {
+        const rawId = m.id;
+        const existing = APPROVED_GROQ_MODELS.find(x => x.id === rawId);
+        if (existing) return existing;
+
+        const idLower = rawId.toLowerCase();
+        let displayName = rawId;
+        // Clean display name, e.g. llama-3.3-70b-versatile -> LLaMA 3.3 70B
+        displayName = rawId
+          .split('-')
+          .map((word: string) => {
+            if (word === 'llama') return 'LLaMA';
+            if (word === 'it') return 'IT';
+            return word.charAt(0).toUpperCase() + word.slice(1);
+          })
+          .join(' ')
+          .replace(' Versatile', '')
+          .replace(' Instant', '');
+
+        let speed = 'Fast';
+        let reasoning = 'Standard';
+        let useCase = 'Fast responses for daily messaging.';
+        let isRecommended = false;
+
+        if (idLower.includes('8b') || idLower.includes('instant') || idLower.includes('8b-instant')) {
+          speed = 'Blazing';
+          reasoning = 'Standard';
+          useCase = 'Fastest and lowest cost.';
+        } else if (idLower.includes('70b') || idLower.includes('versatile')) {
+          speed = 'Fast';
+          reasoning = 'High';
+          useCase = 'Best reasoning for emotionally complex conversations.';
+          isRecommended = true;
+        } else if (idLower.includes('mixtral') || idLower.includes('8x7b')) {
+          speed = 'Moderate';
+          reasoning = 'Standard';
+          useCase = 'High-quality mixture of experts model for long contexts.';
+        } else if (idLower.includes('gemma')) {
+          speed = 'Fast';
+          reasoning = 'Standard';
+          useCase = 'Google Gemma instruction tuned model optimized for conversational logic.';
+        }
+
+        return {
+          id: rawId,
+          displayName,
+          speed,
+          reasoning,
+          useCase,
+          contextLength: idLower.includes('70b') || idLower.includes('mixtral') ? '32K tokens' : '8K tokens',
+          isRecommended,
+        };
+      });
+
+      // Sort: Recommended on top, then default, then others
+      const sorted = mapped.sort((a, b) => {
+        const aVal = (a.isRecommended ? 2 : 0) + (a.isDefault ? 1 : 0);
+        const bVal = (b.isRecommended ? 2 : 0) + (b.isDefault ? 1 : 0);
+        return bVal - aVal;
+      });
+
+      await this.setCachedModels(sorted);
+      return sorted.length > 0 ? sorted : APPROVED_GROQ_MODELS;
+    } catch (err) {
+      console.warn('[GroqProvider] Failed to refresh models:', err);
+      return APPROVED_GROQ_MODELS;
+    }
+  }
+
+  public async selectModel(modelId: string): Promise<void> {
+    console.log(`[GroqProvider] Selected model: ${modelId}`);
+  }
+
+  public async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<ProviderResult> {
+    return this.generateReply(request, options);
+  }
+
+  private async getCachedModels(): Promise<ModelDescription[] | null> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        const res = await chromeObj.storage.local.get([key]);
+        return res[key] || null;
+      }
+    } catch {}
+    return null;
+  }
+
+  private async setCachedModels(models: ModelDescription[]): Promise<void> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        await chromeObj.storage.local.set({ [key]: models });
+      }
+    } catch {}
+  }
 }
+
+const APPROVED_GROQ_MODELS: ModelDescription[] = [
+  {
+    id: 'llama-3.3-70b-versatile',
+    displayName: 'LLaMA 3.3 70B',
+    speed: 'Fast',
+    reasoning: 'High',
+    useCase: 'Best reasoning for emotionally complex conversations.',
+    contextLength: '32K tokens',
+    isRecommended: true,
+    isDefault: true,
+  },
+  {
+    id: 'llama-3.1-8b-instant',
+    displayName: 'LLaMA 3.1 8B',
+    speed: 'Blazing',
+    reasoning: 'Standard',
+    useCase: 'Fastest and lowest cost.',
+    contextLength: '8K tokens',
+  },
+  {
+    id: 'mixtral-8x7b-32768',
+    displayName: 'Mixtral 8x7B',
+    speed: 'Moderate',
+    reasoning: 'Standard',
+    useCase: 'High-quality mixture of experts model for long contexts.',
+    contextLength: '32K tokens',
+  },
+  {
+    id: 'gemma2-9b-it',
+    displayName: 'Gemma 2 9B',
+    speed: 'Fast',
+    reasoning: 'Standard',
+    useCase: 'Google Gemma instruction tuned model optimized for conversational logic.',
+    contextLength: '8K tokens',
+  }
+];

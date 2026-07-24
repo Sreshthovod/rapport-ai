@@ -4,7 +4,7 @@ import {
   ProviderCapabilities,
   ProviderResult,
 } from '@rapport/shared';
-import { AIProvider } from './AIProvider.js';
+import { AIProvider, ModelDescription } from './AIProvider.js';
 import { ApiKeyManager } from './ApiKeyManager.js';
 import { MetricsTracker } from './MetricsTracker.js';
 import { SuggestionEngine } from '../prompts/SuggestionEngine.js';
@@ -299,4 +299,187 @@ export class GeminiProvider implements AIProvider {
       return { success: false, error: err instanceof Error ? err.message : 'Gemini stream error' };
     }
   }
+
+  public async verifyKey(apiKey: string): Promise<boolean> {
+    return this.validateKey(apiKey);
+  }
+
+  public async listModels(): Promise<ModelDescription[]> {
+    const cached = await this.getCachedModels();
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    return APPROVED_GEMINI_MODELS;
+  }
+
+  public async refreshModels(): Promise<ModelDescription[]> {
+    const apiKey = await this.keyManager.getKey(this.id);
+    if (!apiKey) {
+      return APPROVED_GEMINI_MODELS;
+    }
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+        { method: 'GET' }
+      );
+      if (res.status !== 200) {
+        return APPROVED_GEMINI_MODELS;
+      }
+      const data = await res.json();
+      const rawModels = data.models || [];
+      
+      // Filter models
+      const filtered = rawModels.filter((m: any) => {
+        const id = m.name ? m.name.replace('models/', '') : '';
+        const nameLower = id.toLowerCase();
+        // Only keep models starting with gemini
+        if (!nameLower.startsWith('gemini')) return false;
+        
+        // Filter out: Preview models, Deprecated models, Experimental models, Retired models
+        if (nameLower.includes('preview') ||
+            nameLower.includes('deprecated') ||
+            nameLower.includes('experimental') ||
+            nameLower.includes('exp') ||
+            nameLower.includes('retired') ||
+            nameLower.includes('bison') ||
+            nameLower.includes('tuning') ||
+            nameLower.includes('internal') ||
+            nameLower.includes('vision')) {
+          return false;
+        }
+        return true;
+      });
+
+      // Map models
+      const mapped: ModelDescription[] = filtered.map((m: any) => {
+        const rawId = m.name ? m.name.replace('models/', '') : '';
+        // Check if we have hardcoded metadata
+        const existing = APPROVED_GEMINI_MODELS.find(x => x.id === rawId);
+        if (existing) return existing;
+
+        // Otherwise generate future proof description
+        const idLower = rawId.toLowerCase();
+        let displayName = rawId;
+        // Clean display name, e.g. gemini-1.5-flash -> Gemini 1.5 Flash
+        displayName = rawId
+          .split('-')
+          .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+
+        // If google introduces gemini-4 or gemini-ultra, map them dynamically:
+        let speed = 'Fast';
+        let reasoning = 'Standard';
+        let useCase = 'Fast responses for daily messaging.';
+        let isRecommended = false;
+
+        if (idLower.includes('flash') && idLower.includes('8b')) {
+          displayName = 'Gemini Flash Lite';
+          speed = 'Blazing';
+          reasoning = 'Lightweight';
+          useCase = 'Fastest and lowest cost.';
+        } else if (idLower.includes('flash')) {
+          speed = 'Fast';
+          reasoning = 'Standard';
+          useCase = 'Fast responses for daily messaging.';
+          isRecommended = true;
+        } else if (idLower.includes('pro')) {
+          speed = 'Moderate';
+          reasoning = 'High';
+          useCase = 'Best reasoning for emotionally complex conversations.';
+        } else if (idLower.includes('ultra')) {
+          speed = 'Moderate';
+          reasoning = 'Very High';
+          useCase = 'Deep reasoning for complex tasks.';
+        } else if (idLower.includes('nano')) {
+          speed = 'Blazing';
+          reasoning = 'Lightweight';
+          useCase = 'Resource efficient offline execution.';
+        }
+
+        return {
+          id: rawId,
+          displayName,
+          speed,
+          reasoning,
+          useCase,
+          contextLength: m.inputTokenLimit ? `${Math.round(m.inputTokenLimit / 1000)}K tokens` : undefined,
+          isRecommended,
+        };
+      });
+
+      // Sort: Recommended on top, then default, then others
+      const sorted = mapped.sort((a, b) => {
+        const aVal = (a.isRecommended ? 2 : 0) + (a.isDefault ? 1 : 0);
+        const bVal = (b.isRecommended ? 2 : 0) + (b.isDefault ? 1 : 0);
+        return bVal - aVal;
+      });
+
+      // Save to cache
+      await this.setCachedModels(sorted);
+      return sorted.length > 0 ? sorted : APPROVED_GEMINI_MODELS;
+    } catch (err) {
+      console.warn('[GeminiProvider] Failed to refresh models:', err);
+      return APPROVED_GEMINI_MODELS;
+    }
+  }
+
+  public async selectModel(modelId: string): Promise<void> {
+    console.log(`[GeminiProvider] Selected model: ${modelId}`);
+  }
+
+  public async generate(request: AIRequest, options?: { signal?: AbortSignal }): Promise<ProviderResult> {
+    return this.generateReply(request, options);
+  }
+
+  private async getCachedModels(): Promise<ModelDescription[] | null> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        const res = await chromeObj.storage.local.get([key]);
+        return res[key] || null;
+      }
+    } catch {}
+    return null;
+  }
+
+  private async setCachedModels(models: ModelDescription[]): Promise<void> {
+    try {
+      const chromeObj = typeof window !== 'undefined' ? (window as any).chrome : null;
+      if (chromeObj && chromeObj.storage && chromeObj.storage.local) {
+        const key = `rapport_models_cache_${this.id}`;
+        await chromeObj.storage.local.set({ [key]: models });
+      }
+    } catch {}
+  }
 }
+
+const APPROVED_GEMINI_MODELS: ModelDescription[] = [
+  {
+    id: 'gemini-1.5-flash',
+    displayName: 'Gemini Flash',
+    speed: 'Fast',
+    reasoning: 'Standard',
+    useCase: 'Fast responses for daily messaging.',
+    contextLength: '1M tokens',
+    isRecommended: true,
+    isDefault: true,
+  },
+  {
+    id: 'gemini-1.5-pro',
+    displayName: 'Gemini Pro',
+    speed: 'Moderate',
+    reasoning: 'High',
+    useCase: 'Best reasoning for emotionally complex conversations.',
+    contextLength: '2M tokens',
+  },
+  {
+    id: 'gemini-1.5-flash-8b',
+    displayName: 'Gemini Flash Lite',
+    speed: 'Blazing',
+    reasoning: 'Lightweight',
+    useCase: 'Fastest and lowest cost.',
+    contextLength: '1M tokens',
+  }
+];

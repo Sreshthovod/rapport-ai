@@ -7,7 +7,7 @@ import {
   ThemePreference,
   WritingStyleProfile,
 } from '@rapport/shared';
-import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager, WritingStyleEngine } from '@rapport/ai-core';
+import { ApiKeyManager, ModelRegistry, ProviderManager, SettingsManager, WritingStyleEngine, ModelDescription, ProviderRegistry } from '@rapport/ai-core';
 import { BrowserStorageMemoryStore, MemoryRecord, MemoryCategory, MemoryService } from '@rapport/memory';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +113,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   const [keyStatuses, setKeyStatuses] = useState<Record<string, 'connected' | 'invalid' | 'missing'>>({});
   const [testingKey, setTestingKey] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Record<string, { message: string; success: boolean }>>({});
+
+  // Dynamic models state
+  const [dynamicModels, setDynamicModels] = useState<ModelDescription[]>([]);
+  const [refreshingModels, setRefreshingModels] = useState(false);
+
+  const loadDynamicModels = useCallback(async (providerId: string) => {
+    try {
+      const provider = ProviderRegistry.getInstance().getProvider(providerId);
+      if (provider && typeof provider.listModels === 'function') {
+        const list = await provider.listModels();
+        setDynamicModels(list);
+      }
+    } catch (err) {
+      console.warn('Failed to load dynamic models:', err);
+    }
+  }, []);
+
+  const handleRefreshModels = useCallback(async (providerId: string) => {
+    setRefreshingModels(true);
+    try {
+      const provider = ProviderRegistry.getInstance().getProvider(providerId);
+      if (provider && typeof provider.refreshModels === 'function') {
+        const list = await provider.refreshModels();
+        setDynamicModels(list);
+      }
+    } catch (err) {
+      console.warn('Failed to refresh dynamic models:', err);
+    } finally {
+      setRefreshingModels(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDynamicModels(settings.activeProviderId);
+  }, [settings.activeProviderId, loadDynamicModels]);
 
   // Developer Mode unlock count
   const [versionClicks, setVersionClicks] = useState(0);
@@ -880,22 +915,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                     {
                       id: 'openai' as LLMProviderId,
                       title: 'OpenAI GPT Engine',
-                      desc: 'Powered by GPT-4o. Best for natural logic and fast replies.',
+                      desc: "Powered by OpenAI's GPT platform. Choose the model that best fits your workflow.",
                     },
                     {
                       id: 'claude' as LLMProviderId,
                       title: 'Anthropic Claude Engine',
-                      desc: 'Powered by Claude 3.5. Excels at deep empathy and matching style.',
+                      desc: "Powered by Anthropic's Claude AI platform. Excels at conversational style matching.",
                     },
                     {
                       id: 'gemini' as LLMProviderId,
                       title: 'Google Gemini Engine',
-                      desc: 'Powered by Gemini 2.5. Highly efficient for long chats.',
+                      desc: "Powered by Google's Gemini AI platform. Choose the model that best fits your workflow.",
                     },
                     {
                       id: 'groq' as LLMProviderId,
                       title: 'Groq Cloud Engine',
-                      desc: 'Powered by LLaMA 3.3. Blazing fast response generation.',
+                      desc: "Powered by Groq's high-speed inference engine. Supports open-weight models.",
                     },
                   ].map((p) => {
                     const isSelected = settings.activeProviderId === p.id;
@@ -949,7 +984,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                 </div>
               </div>
 
-              {settings.activeProviderId !== 'fake-provider' && (
+              {(settings.activeProviderId as string) !== 'fake-provider' && (
                 <>
                   <hr style={S.divider} />
                   <SectionHeading title="API Key Status" subtitle="Verification status and connection health." />
@@ -1029,7 +1064,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
 
                   <hr style={S.divider} />
                   <div style={S.fieldGroup}>
-                    <label style={S.label}>Model Selection</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={S.label}>Model Selection</label>
+                      {(settings.activeProviderId as string) !== 'fake-provider' && (
+                        <button
+                          onClick={() => handleRefreshModels(settings.activeProviderId)}
+                          disabled={refreshingModels}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: C.accent,
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          🔄 {refreshingModels ? 'Refreshing...' : 'Refresh List'}
+                        </button>
+                      )}
+                    </div>
                     <p style={S.description}>Choose the specific logic model to load.</p>
                     <select
                       value={
@@ -1051,12 +1109,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
                             ? 'geminiModel'
                             : 'groqModel';
                         handleUpdate({ [key]: e.target.value });
+                        
+                        // Call selectModel if supported
+                        try {
+                          const activeProvider = ProviderRegistry.getInstance().getProvider(settings.activeProviderId);
+                          if (activeProvider && typeof activeProvider.selectModel === 'function') {
+                            activeProvider.selectModel(e.target.value);
+                          }
+                        } catch {}
                       }}
                       style={S.select}
                     >
-                      {modelRegistry.getModelsForProvider(settings.activeProviderId).map((m) => (
+                      {dynamicModels.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name} — {m.description}
+                          {m.isRecommended ? '⭐ ' : ''}{m.displayName} ({m.speed} | {m.reasoning}) — {m.useCase} {m.contextLength ? `[${m.contextLength}]` : ''}
                         </option>
                       ))}
                     </select>
