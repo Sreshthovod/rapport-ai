@@ -94,8 +94,9 @@ export interface AIModalProps {
   /** Dynamic copilot recommendation tip from CopilotEngine */
   copilotTip?: string;
   anchorTop?: number;
-  activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings';
-  onTabChange: (tab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings') => void;
+  activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory';
+  onTabChange: (tab: 'AI' | 'Tone' | 'Strategy' | 'Memory') => void;
+  onSettingsClick: () => void;
 }
 
 const getToneColor = (tone: string): { bg: string; border: string; text: string } => {
@@ -157,6 +158,7 @@ export const AIModal: React.FC<AIModalProps> = ({
   anchorTop,
   activeTab,
   onTabChange,
+  onSettingsClick,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
@@ -167,9 +169,9 @@ export const AIModal: React.FC<AIModalProps> = ({
 
   useEffect(() => {
     if (initialShowSettings) {
-      onTabChange('Settings');
+      onSettingsClick();
     }
-  }, [initialShowSettings, onTabChange]);
+  }, [initialShowSettings, onSettingsClick]);
 
   // Dragging state
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -307,7 +309,7 @@ export const AIModal: React.FC<AIModalProps> = ({
         if (activeTab === 'AI') {
           setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
         } else {
-          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory'> = ['AI', 'Tone', 'Strategy', 'Memory'];
           const idx = tabOrder.indexOf(activeTab);
           onTabChange(tabOrder[(idx + 1) % tabOrder.length]);
         }
@@ -316,7 +318,7 @@ export const AIModal: React.FC<AIModalProps> = ({
         if (activeTab === 'AI') {
           setSelectedIndex((prev) => (prev + 1) % (suggestions.length || 1));
         } else {
-          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory'> = ['AI', 'Tone', 'Strategy', 'Memory'];
           const idx = tabOrder.indexOf(activeTab);
           onTabChange(tabOrder[(idx + 1) % tabOrder.length]);
         }
@@ -325,7 +327,7 @@ export const AIModal: React.FC<AIModalProps> = ({
         if (activeTab === 'AI') {
           setSelectedIndex((prev) => (prev - 1 + suggestions.length) % (suggestions.length || 1));
         } else {
-          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings'> = ['AI', 'Tone', 'Strategy', 'Memory', 'Settings'];
+          const tabOrder: Array<'AI' | 'Tone' | 'Strategy' | 'Memory'> = ['AI', 'Tone', 'Strategy', 'Memory'];
           const idx = tabOrder.indexOf(activeTab);
           onTabChange(tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length]);
         }
@@ -478,6 +480,23 @@ export const AIModal: React.FC<AIModalProps> = ({
             </button>
           )}
           <button
+            onClick={onSettingsClick}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--rapport-border)',
+              borderRadius: 'var(--rapport-radius-sm)',
+              color: 'var(--rapport-text-secondary)',
+              cursor: 'pointer',
+              fontSize: '11px',
+              padding: '3px 8px',
+              fontWeight: 500,
+              transition: 'all var(--rapport-transition-fast)',
+            }}
+            title="Open Preferences Dialog"
+          >
+            ⚙️ Settings
+          </button>
+          <button
             onClick={onClose}
             style={{
               background: 'transparent',
@@ -497,7 +516,7 @@ export const AIModal: React.FC<AIModalProps> = ({
 
       {/* Workspace Tabs Navigation Bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--rapport-border)', marginBottom: '12px', flexShrink: 0 }}>
-        {(['AI', 'Tone', 'Strategy', 'Memory', 'Settings'] as const).map((tab) => {
+        {(['AI', 'Tone', 'Strategy', 'Memory'] as const).map((tab) => {
           const isSelected = activeTab === tab;
           return (
             <button
@@ -878,14 +897,6 @@ export const AIModal: React.FC<AIModalProps> = ({
           </ErrorBoundary>
         )}
 
-        {activeTab === 'Settings' && (
-          <ErrorBoundary fallbackTitle="Settings Panel Failed">
-            <SettingsView
-              onClose={onClose}
-              mode="workspace"
-            />
-          </ErrorBoundary>
-        )}
       </div>
 
       {/* Developer Diagnostics Panel */}

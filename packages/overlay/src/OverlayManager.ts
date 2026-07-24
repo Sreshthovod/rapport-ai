@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { CompiledPromptSpec, FakeAIResponse } from '@rapport/shared';
 import { AIModal } from './components/AIModal.js';
+import { SettingsView } from './components/SettingsView.js';
 import { FloatingToolbar } from './FloatingToolbar.js';
 import { createPositioningEngine, PositioningEngine } from './Positioning.js';
 import { createShadowHost, ShadowRootHost } from './ShadowRoot.js';
@@ -27,7 +28,8 @@ export class OverlayManager {
 
   // Unified Workspace States
   private workspaceVisible: boolean = false;
-  private activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' | 'Settings' = 'AI';
+  private settingsVisible: boolean = false;
+  private activeTab: 'AI' | 'Tone' | 'Strategy' | 'Memory' = 'AI';
   private aiModalLoading: boolean = false;
   private aiModalShowSettings: boolean = false;
   private streamingText: string = '';
@@ -100,8 +102,7 @@ export class OverlayManager {
   }
 
   public showAISettings(): void {
-    this.workspaceVisible = true;
-    this.activeTab = 'Settings';
+    this.settingsVisible = true;
     this.render();
   }
 
@@ -254,7 +255,13 @@ export class OverlayManager {
 
   private handleKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
-      if (this.workspaceVisible) {
+      if (this.settingsVisible) {
+        this.settingsVisible = false;
+        event.preventDefault();
+        event.stopPropagation();
+        this.render();
+        return;
+      } else if (this.workspaceVisible) {
         this.workspaceVisible = false;
         event.preventDefault();
         event.stopPropagation();
@@ -334,12 +341,7 @@ export class OverlayManager {
               this.render();
             },
             onSettingsClick: () => {
-              if (this.workspaceVisible && this.activeTab === 'Settings') {
-                this.workspaceVisible = false;
-              } else {
-                this.workspaceVisible = true;
-                this.activeTab = 'Settings';
-              }
+              this.settingsVisible = !this.settingsVisible;
               this.render();
             },
           }),
@@ -350,8 +352,11 @@ export class OverlayManager {
               this.activeTab = tab;
               this.render();
             },
+            onSettingsClick: () => {
+              this.settingsVisible = true;
+              this.render();
+            },
             loading: this.aiModalLoading,
-            initialShowSettings: this.activeTab === 'Settings',
             streamingText: this.streamingText,
             data: this.aiModalData,
             error: this.aiModalError,
@@ -371,7 +376,56 @@ export class OverlayManager {
               }
               this.closeAIModal();
             },
-          })
+          }),
+          this.settingsVisible && React.createElement(
+            'div',
+            {
+              key: 'settings-backdrop',
+              style: {
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(0, 0, 0, 0.55)',
+                backdropFilter: 'blur(10px)',
+                zIndex: 9999999,
+                boxSizing: 'border-box',
+                animation: 'rapportFadeIn 180ms ease forwards',
+              }
+            },
+            React.createElement(
+              'div',
+              {
+                style: {
+                  animation: 'rapportScaleUp 180ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }
+              },
+              React.createElement(SettingsView, {
+                onClose: () => {
+                  this.settingsVisible = false;
+                  this.render();
+                },
+                mode: 'overlay'
+              })
+            )
+          ),
+          React.createElement('style', null, `
+            @keyframes rapportFadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+            @keyframes rapportScaleUp {
+              from { transform: scale(0.95); opacity: 0; }
+              to { transform: scale(1); opacity: 1; }
+            }
+          `)
         )
       )
     );

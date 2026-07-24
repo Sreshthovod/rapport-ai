@@ -508,9 +508,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
   ];
 
   // Layout sizing config based on display modes
-  const [size, setSize] = useState({
-    width: mode === 'popup' ? 440 : (mode === 'sidepanel' ? 320 : (mode === 'workspace' ? 420 : 1100)),
-    height: mode === 'popup' ? 560 : (mode === 'sidepanel' ? 650 : (mode === 'workspace' ? 350 : 760))
+  const [size, setSize] = useState(() => {
+    const defaultHeight = typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.85) : 760;
+    return {
+      width: mode === 'popup' ? 440 : (mode === 'sidepanel' ? 320 : (mode === 'workspace' ? 420 : 1100)),
+      height: mode === 'popup' ? 560 : (mode === 'sidepanel' ? 650 : (mode === 'workspace' ? 350 : defaultHeight))
+    };
   });
 
   // Prevent background scrolling when overlay modal is active
@@ -689,11 +692,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, mode = 'ove
         height: mode === 'workspace' ? '100%' : `${size.height}px`,
         maxWidth: mode === 'workspace' ? '100%' : (mode === 'popup' || mode === 'sidepanel' ? '100vw' : '90vw'),
         maxHeight: mode === 'workspace' ? '100%' : (mode === 'popup' || mode === 'sidepanel' ? '100vh' : '90vh'),
-        background: mode === 'workspace' ? 'transparent' : C.bg,
+        background: mode === 'workspace' ? 'transparent' : 'rgba(15, 23, 42, 0.88)',
         color: C.textPrimary,
-        borderRadius: mode === 'workspace' ? '0' : C.radiusLg,
-        border: mode === 'workspace' ? 'none' : `1px solid ${C.border}`,
-        boxShadow: mode === 'workspace' ? 'none' : C.shadow,
+        borderRadius: mode === 'workspace' ? '0' : '18px',
+        border: mode === 'workspace' ? 'none' : '1px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: mode === 'workspace' ? 'none' : '0 24px 64px rgba(0, 0, 0, 0.55)',
+        backdropFilter: mode === 'workspace' ? 'none' : 'blur(20px)',
         fontFamily: C.fontFamily,
         overflow: 'hidden',
         position: 'relative',
