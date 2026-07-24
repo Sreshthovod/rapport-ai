@@ -26,34 +26,30 @@
 ## 🏗️ Architecture Overview
 
 ```text
-+-----------------------------------------------------------------------+
-|                      MANIFEST V3 BROWSER EXTENSION                    |
-|  +------------------------+   +------------------------------------+  |
-|  | Content Scripts (DOM)  | < | Background Worker (State & Auth)   |  |
-|  +------------------------+   +------------------------------------+  |
-|               │                                  │                    |
-|               ▼                                  ▼                    |
-|  Shadow DOM UI Overlay               Local IndexedDB (Dexie.js)       |
-+-----------------------------------------------------------------------+
-                                    │
-                                    ▼ (Streaming SSE / BYOK)
-+-----------------------------------------------------------------------+
-|                 NODE.JS / HONO BACKEND (Vercel AI SDK)                |
-+-----------------------------------------------------------------------+
-                                    │
-                                    ▼
-                 Cloud LLMs (OpenAI / Claude / Gemini)
++-------------------------------------------------------------------------------+
+|                        MANIFEST V3 BROWSER EXTENSION                          |
+|   +---------------------------------+   +---------------------------------+   |
+|   |  Content Script (DOM & Events)  | < | Background Worker (API & Sync)  |   |
+|   +---------------------------------+   +---------------------------------+   |
+|                    │                                     │                    |
+|                    ▼                                     ▼                    |
+|    Encapsulated Shadow DOM Overlay            Local Chrome Storage            |
+|    (Toolbar, Workspace, Preferences)         (Reactive Cache & Sync)          |
++-------------------------------------------------------------------------------+
+                                         │
+                                         ▼ (BYOK Direct Integrations)
+                         Cloud LLM Providers (OpenAI, Claude, Gemini)
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Extension Frontend**: React 18, TypeScript, Vite, TailwindCSS, `@crxjs/vite-plugin`.
-- **Local Storage**: IndexedDB, Dexie.js.
-- **Backend API**: Node.js, Hono.js, Vercel AI SDK (`ai`).
-- **Monorepo**: Turborepo, pnpm workspaces.
-- **Testing**: Vitest, Playwright.
+- **Extension UI & Layout**: React 18, TypeScript, Vanilla CSS (Shadow DOM isolated).
+- **Core Orchestration**: Turborepo Monorepo, `pnpm` workspaces.
+- **Provider Manager**: Multi-provider LLM clients with quality feedback and auto-regeneration loops.
+- **Local Cache**: Local browser storage with cross-tab reactive change events.
+- **Testing**: Unified Vitest and Scenario runner suites.
 
 ---
 
@@ -132,9 +128,9 @@ rapport-ai/
 
 ## 🛣️ Product Roadmap
 
-- [x] **Phase 1 (MVP)**: Slack Web & WhatsApp Web DOM injectors, Commitment Guardrail, De-escalation Brake, Local IndexedDB store.
-- [ ] **Phase 2**: Local Vector RAG engine (Transformers.js), Tactical Pushback Shield, Sidepanel Memory Inspector.
-- [ ] **Phase 3**: Local offline LLM support (Ollama/WebLLM), Multimodal Audio Dictation Polish, Enterprise Policy Engine.
+- [x] **Phase 1 (MVP)**: Embedded DOM injectors, Commitment Guardrail, De-escalation Brake.
+- [x] **Phase 2 (Stable Beta)**: Premium draggable Toolbar, resizable independent Preferences Dialog, event leak audit cleanups, cross-tab reactive storage synchronizations, OS theme integrations, suggestion retry handlers, and quality evaluators.
+- [ ] **Phase 3 (Release)**: Local Vector RAG engine (Transformers.js), Local offline LLM support (Ollama/WebLLM), Audio Dictation.
 
 ---
 
